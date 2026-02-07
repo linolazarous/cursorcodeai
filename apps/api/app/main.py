@@ -2,7 +2,7 @@
 """
 CursorCode AI FastAPI Application Entry Point
 Production-ready (February 2026): middleware, lifespan, observability, routers, security.
-Supabase-ready: external managed Postgres, no auto-migrations on startup.
+Supabase-ready: external managed Postgres, no auto-migrations, no engine dispose.
 """
 
 import logging
@@ -19,7 +19,7 @@ import sentry_sdk
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
-from app.db.session import engine, init_db   # init_db now only tests connection
+from app.db.session import engine, init_db   # init_db only tests connection
 from app.routers import (
     auth,
     orgs,
@@ -78,24 +78,25 @@ async def lifespan(app: FastAPI):
     )
 
     try:
-        # Only test connection (no auto-migrations — use Supabase dashboard or CLI)
+        # Only test connection to Supabase Postgres (no migrations here)
         await init_db()
-        logger.info("Supabase PostgreSQL connection verified")
+        db_type = "Supabase" if "supabase" in str(settings.DATABASE_URL).lower() else "PostgreSQL"
+        logger.info(f"{db_type} connection verified")
     except Exception as exc:
-        logger.critical(f"Supabase connection failed on startup: {exc}")
+        logger.critical(f"Database connection failed on startup: {exc}")
         sentry_sdk.capture_exception(exc)
-        # In production: continue with alert (don't crash) unless critical
-        # raise exc  # uncomment only if you want hard fail on DB down
+        # Production policy: continue with alert (don't crash on DB issue)
+        # raise exc  # uncomment only if you want hard fail
 
-    # Optional: warm Redis cache, check Stripe/SendGrid connectivity, etc.
+    # Optional: warm Redis, check Stripe/SendGrid, etc.
     # await redis_client.ping()
 
     yield
 
     # ── Shutdown ────────────────────────────────────
     logger.info("CursorCode AI API shutting down...")
-    # Supabase pooling is external — no need to dispose engine aggressively
-    # await engine.dispose()  # optional; can cause warnings in some hosts
+    # Supabase pooling is external — no need to dispose engine
+    # await engine.dispose()  # commented out – avoids warnings in hosted envs
     logger.info("Shutdown complete")
 
 
@@ -169,7 +170,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ────────────────────────────────────────────────
-# Health / Readiness / Liveness (K8s / Render / Railway friendly)
+# Health / Readiness / Liveness (Render / Railway / K8s friendly)
 # ────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -178,7 +179,7 @@ async def health_check():
 
 @app.get("/ready", tags=["Health"])
 async def readiness_check():
-    # In real prod: ping Supabase, Redis, Stripe connectivity if critical
+    # Optional: add real checks (Supabase ping, Redis ping) if critical
     return {"status": "ready"}
 
 
