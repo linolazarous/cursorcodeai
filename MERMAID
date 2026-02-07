@@ -1,0 +1,50 @@
+sequenceDiagram
+    participant User
+    participant Frontend (Next.js)
+    participant Backend (FastAPI)
+    participant DB (Postgres)
+    participant Email (SendGrid)
+
+    User->>Frontend: Visits /login or /signup
+    Frontend->>Backend: GET /auth/providers (OAuth options)
+    Backend-->>Frontend: Returns Google/GitHub + credentials option
+
+    alt Signup (Email + Password)
+        User->>Frontend: Enter email + password
+        Frontend->>Backend: POST /auth/signup {email, password}
+        Backend->>DB: Create user (unverified), generate verification token
+        Backend->>Email: Send verification email (link with token)
+        Email-->>User: Verification email
+        User->>Frontend: Click verification link
+        Frontend->>Backend: GET /auth/verify?token=...
+        Backend->>DB: Mark user verified, issue JWT + refresh
+        Backend-->>Frontend: Set httpOnly cookies + redirect /dashboard
+    else Login (Email + Password)
+        User->>Frontend: Enter email + password
+        Frontend->>Backend: POST /auth/login {email, password}
+        alt Credentials valid & verified
+            Backend->>DB: Validate password hash
+            Backend-->>Frontend: JWT (access) + refresh token in httpOnly cookies
+            Frontend->>Frontend: Redirect to /dashboard
+        else Invalid / unverified
+            Backend-->>Frontend: 401 + error message
+        end
+    else OAuth (Google/GitHub)
+        User->>Frontend: Click "Sign in with Google"
+        Frontend->>Backend: Redirect to /auth/google
+        Backend->>Google: OAuth redirect
+        Google-->>User: Consent screen
+        User-->>Google: Approve
+        Google-->>Backend: Callback with code
+        Backend->>Google: Exchange code → tokens + userinfo
+        Backend->>DB: Find or create user (link by email)
+        Backend-->>Frontend: Set JWT cookies + redirect
+    end
+
+    Note over Frontend,Backend: All protected routes
+    Frontend->>Backend: API call with Authorization: Bearer <access_token>
+    Backend->>Backend: Validate JWT + check RBAC
+    alt Token expired
+        Frontend->>Backend: POST /auth/refresh {refresh_token in cookie}
+        Backend-->>Frontend: New access + refresh tokens
+    end

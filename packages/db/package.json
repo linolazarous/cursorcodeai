@@ -1,0 +1,8 @@
+{
+"name": "@cursorcode/db",
+"scripts": {
+"generate": "prisma generate",
+"migrate": "prisma migrate deploy"
+},
+"dependencies": { "prisma": "^5.8.1" }
+}

@@ -1,0 +1,131 @@
+name: Deploy Backend to Render
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+permissions:
+  contents: read
+  id-token: write     # Needed for Render OIDC auth (recommended)
+
+jobs:
+  # ────────────────────────────────────────────────
+  # Lint & Test
+  # ────────────────────────────────────────────────
+  lint-and-test:
+    name: Lint & Test Backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          cd apps/api
+          python -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Lint
+        run: |
+          cd apps/api
+          source venv/bin/activate
+          ruff check .
+          mypy .
+
+      - name: Run tests
+        run: |
+          cd apps/api
+          source venv/bin/activate
+          pytest --cov --cov-report=xml
+
+      - name: Upload coverage (optional)
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./apps/api/coverage.xml
+
+  # ────────────────────────────────────────────────
+  # Build & Deploy to Render
+  # ────────────────────────────────────────────────
+  deploy:
+    name: Build & Deploy to Render
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        uses: johnwargo/render-deploy-action@v1.0.3
+        with:
+          # Required
+          service-id: ${{ secrets.RENDER_SERVICE_ID }}       # From Render dashboard → Service → Settings → API Keys
+          api-key: ${{ secrets.RENDER_API_KEY }}             # Personal API key from Render → Account → API Keys
+          
+          # Optional but recommended
+          wait-for-deploy: true                              # Wait until deploy finishes
+          wait-timeout: 900                                  # 15 min timeout
+          
+          # Optional - override if needed
+          # branch: main                                     # Defaults to current branch
+          # clear-cache: true                                # Force clear build cache
+
+      - name: Notify Slack on success
+        if: success()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_TITLE: "Render Deploy Success"
+          SLACK_MESSAGE: "Backend deployed to Render\nCommit: ${{ github.sha }}\nBranch: ${{ github.ref_name }}"
+          SLACK_COLOR: good
+          SLACK_ICON: https://github.com/favicon.ico
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_TITLE: "Render Deploy FAILED"
+          SLACK_MESSAGE: "Backend deployment failed\nCommit: ${{ github.sha }}\nBranch: ${{ github.ref_name }}"
+          SLACK_COLOR: danger
+          SLACK_ICON: https://github.com/favicon.ico

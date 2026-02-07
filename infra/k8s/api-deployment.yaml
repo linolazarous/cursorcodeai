@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: cursorcode-api
+spec:
+replicas: 2
+selector:
+matchLabels:
+app: cursorcode-api
+template:
+metadata:
+labels:
+app: cursorcode-api
+spec:
+containers:
+- name: api
+image: yourregistry/cursorcode-api:latest
+ports:
+- containerPort: 8000
+envFrom:
+- secretRef:
+name: cursorcode-secrets  # Kubernetes secret with env vars
