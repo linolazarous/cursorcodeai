@@ -9,6 +9,32 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { auth } from "@/app/api/auth/[...nextauth]/route"
 
+// ────────────────────────────────────────────────
+// Custom monitoring – global error reporting
+// ────────────────────────────────────────────────
+import { reportFrontendError } from "@/lib/monitoring"
+
+if (typeof window !== "undefined") {
+  // Global sync error handler
+  window.onerror = (msg, url, line, col, error) => {
+    reportFrontendError(error || new Error(String(msg)), {
+      source: "window.onerror",
+      url,
+      line,
+      col,
+    })
+    return false // Let default handler log to console too
+  }
+
+  // Global async/unhandled promise rejection handler
+  window.addEventListener("unhandledrejection", (event) => {
+    reportFrontendError(event.reason, {
+      source: "unhandledrejection",
+      promise: event.promise,
+    })
+  })
+}
+
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -88,7 +114,7 @@ export default async function RootLayout({
         {/* Preload critical assets */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Security headers (can be enhanced via next.config.js or Vercel) */}
+        {/* Security headers (enhanced via next.config.mjs or Vercel) */}
         <meta name="referrer" content="strict-origin-when-cross-origin" />
         <meta name="format-detection" content="telephone=no" />
       </head>
@@ -106,9 +132,6 @@ export default async function RootLayout({
 
               {/* Global Toaster (sonner) */}
               <Toaster position="top-right" richColors closeButton />
-
-              {/* Optional global loading indicator or analytics */}
-              {/* <Analytics /> */}
             </ThemeProvider>
           </QueryClientProvider>
         </SessionProvider>
