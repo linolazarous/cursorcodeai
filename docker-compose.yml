@@ -1,40 +1,14 @@
 # docker-compose.yml
-# Full local development stack for CursorCode AI
+# Local development stack for CursorCode AI (Supabase external DB)
 # Run with: docker compose up -d
 # Access:
 #   Frontend: http://localhost:3000
-#   Backend:  http://localhost:8000
-#   Adminer (DB browser): http://localhost:8080
+#   Backend:  http://localhost:8000/docs
+#   Adminer (DB browser for Supabase): http://localhost:8080
 
 version: "3.9"
 
 services:
-  # ────────────────────────────────────────────────
-  # PostgreSQL Database
-  # ────────────────────────────────────────────────
-  db:
-    image: postgres:16-alpine
-    container_name: cursorcode-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-cursorcode}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   # ────────────────────────────────────────────────
   # Redis (Celery broker & result backend)
   # ────────────────────────────────────────────────
@@ -69,21 +43,17 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     env_file:
       - apps/api/.env
     environment:
-      - DATABASE_URL=postgresql://\( {POSTGRES_USER:-postgres}: \){POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-cursorcode}
       - REDIS_URL=redis://redis:6379/0
       - ENVIRONMENT=development
       - LOG_LEVEL=DEBUG
     volumes:
       - .:/app
-    command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -118,7 +88,7 @@ services:
       - /app/node_modules
     command: pnpm dev
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -129,7 +99,8 @@ services:
         max-file: "5"
 
   # ────────────────────────────────────────────────
-  # Optional: Adminer (database browser) – http://localhost:8080
+  # Optional: Adminer (connect to Supabase remotely)
+  # http://localhost:8080 → Server: db.[project-ref].supabase.co, Port: 6543 (or 5432), User: postgres, Password: your-supabase-pass, Database: postgres
   # ────────────────────────────────────────────────
   adminer:
     image: adminer:latest
@@ -137,10 +108,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    depends_on:
-      - db
     environment:
-      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DEFAULT_SERVER: db.[project-ref].supabase.co  # replace with your Supabase host
+      ADMINER_DESIGN: pepa-linha
     logging:
       driver: "json-file"
       options:
@@ -148,8 +118,7 @@ services:
         max-file: "3"
 
 # ────────────────────────────────────────────────
-# Volumes (persistent data)
+# Volumes (only for Redis now)
 # ────────────────────────────────────────────────
 volumes:
-  postgres_data:
   redis_data:
