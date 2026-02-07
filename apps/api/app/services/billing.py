@@ -3,6 +3,7 @@
 Billing Service - CursorCode AI
 Handles credit metering, Stripe integration, plan changes, and usage reporting.
 Production-ready (2026): atomic transactions, idempotency, retries, audit trail.
+Automatic Stripe Product + Price creation (no manual price IDs).
 """
 
 import logging
@@ -10,15 +11,15 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple
 
 import stripe
-from sqlalchemy import select, update
+from sqlalchemy import select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
-from app.db.session import async_session_factory
+from app.db.session import get_db
 from app.models.user import User
+from app.models.plan import Plan  # New model for plans/prices
 from app.services.logging import audit_log
-from app.tasks.metering import report_grok_usage
 from app.tasks.email import send_email_task
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,92 @@ logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY.get_secret_value()
 
 # ────────────────────────────────────────────────
-# Credit Operations (atomic, with rollback on failure)
+# Plan Configuration (defined in code – no dashboard manual work)
+# Amount in cents (USD), interval: 'month' or 'year'
+# ────────────────────────────────────────────────
+PLAN_CONFIG = {
+    "starter": {"amount": 0, "interval": "month", "display_name": "Starter"},          # Free tier
+    "standard": {"amount": 999, "interval": "month", "display_name": "Standard"},     # $9.99/mo
+    "pro": {"amount": 2999, "interval": "month", "display_name": "Pro"},              # $29.99/mo
+    "premier": {"amount": 9999, "interval": "month", "display_name": "Premier"},      # $99.99/mo
+    "ultra": {"amount": 49999, "interval": "month", "display_name": "Ultra"},         # $499.99/mo
+}
+
+# ────────────────────────────────────────────────
+# Auto-create Stripe Product + Price
+# ────────────────────────────────────────────────
+async def get_or_create_stripe_price(
+    plan_name: str,
+    db: AsyncSession,
+) -> str:
+    """
+    Get existing Stripe Price ID or create new Product + Price for the plan.
+    Stores price ID in Supabase 'plans' table for future use.
+    """
+    if plan_name not in PLAN_CONFIG:
+        raise ValueError(f"Unknown plan: {plan_name}")
+
+    config = PLAN_CONFIG[plan_name]
+    amount_cents = config["amount"]
+    interval = config["interval"]
+    display_name = config["display_name"]
+
+    # Check if price already exists in DB
+    plan = await db.scalar(select(Plan).where(Plan.name == plan_name))
+    if plan and plan.stripe_price_id:
+        # Verify it still exists in Stripe (optional but safe)
+        try:
+            price = stripe.Price.retrieve(plan.stripe_price_id)
+            if price.unit_amount == amount_cents:
+                return plan.stripe_price_id
+        except stripe.error.InvalidRequestError:
+            logger.warning(f"Stored price ID invalid for {plan_name} – recreating")
+
+    try:
+        # Create Product
+        product = stripe.Product.create(
+            name=f"CursorCode {display_name} Plan",
+            description=f"{display_name} plan with AI credits and priority support",
+            metadata={"plan_name": plan_name},
+        )
+
+        # Create recurring Price
+        price = stripe.Price.create(
+            product=product.id,
+            unit_amount=amount_cents,
+            currency="usd",
+            recurring={"interval": interval},
+            metadata={"plan_name": plan_name},
+        )
+
+        # Store in Supabase plans table
+        if not plan:
+            plan = Plan(
+                name=plan_name,
+                display_name=display_name,
+                price_usd=amount_cents,
+                interval=interval,
+                stripe_product_id=product.id,
+                stripe_price_id=price.id,
+            )
+            db.add(plan)
+        else:
+            plan.stripe_product_id = product.id
+            plan.stripe_price_id = price.id
+
+        await db.commit()
+        await db.refresh(plan)
+
+        logger.info(f"Created new Stripe Price for {plan_name}: {price.id}")
+        return price.id
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe price creation failed for {plan_name}: {e}")
+        raise HTTPException(500, "Failed to create billing plan")
+
+
+# ────────────────────────────────────────────────
+# Credit Operations (atomic)
 # ────────────────────────────────────────────────
 async def deduct_credits(
     user_id: str,
@@ -40,7 +126,6 @@ async def deduct_credits(
     Returns (success, message)
     """
     try:
-        # Lock row for update
         stmt = (
             update(User)
             .where(User.id == user_id, User.credits >= amount)
@@ -69,7 +154,7 @@ async def deduct_credits(
             },
         )
 
-        # Low credits alert (if below threshold)
+        # Low credits alert
         if new_credits <= 5:
             send_email_task.delay(
                 to="user_email_from_db",  # Resolve via user query if needed
@@ -173,20 +258,12 @@ async def create_checkout_session(
     db: AsyncSession,
 ) -> Dict[str, Any]:
     """
-    Create Stripe Checkout Session for subscription.
+    Create Stripe Checkout Session for subscription using auto-created price.
     """
     customer_id = await create_or_get_stripe_customer(user, db)
 
-    price_id_map = {
-        "standard": settings.STRIPE_STANDARD_PRICE_ID,
-        "pro": settings.STRIPE_PRO_PRICE_ID,
-        "premier": settings.STRIPE_PREMIER_PRICE_ID,
-        "ultra": settings.STRIPE_ULTRA_PRICE_ID,
-    }
-
-    price_id = price_id_map.get(plan)
-    if not price_id:
-        raise ValueError(f"Invalid plan: {plan}")
+    # Dynamically get/create price for the plan
+    price_id = await get_or_create_stripe_price(plan_name=plan, db=db)
 
     session = stripe.checkout.Session.create(
         customer=customer_id,
@@ -245,4 +322,4 @@ async def report_usage(
         user_id,
         "usage_reported",
         {"tokens": tokens, "model": model}
-    )
+        )
