@@ -1,0 +1,15 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.env*
+.env.*
+tests/
+docs/
+coverage/
+node_modules/
+apps/web/
