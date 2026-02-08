@@ -10,7 +10,6 @@ from typing import List, Dict, Any, Optional
 
 from pydantic import (
     AnyHttpUrl,
-    BaseModel,
     EmailStr,
     Field,
     HttpUrl,
@@ -47,7 +46,7 @@ class Settings(BaseSettings):
     # ────────────────────────────────────────────────
     FRONTEND_URL: AnyHttpUrl = Field(
         ...,
-        description="Base URL of the frontend (used in emails, links, redirects)"
+        description="Base URL of the frontend (used in emails, links, CORS, redirects)"
     )
 
     # Computed backend API URL (used internally & in emails)
@@ -56,7 +55,7 @@ class Settings(BaseSettings):
         """Computed API base URL (derived from FRONTEND_URL or fallback)."""
         return AnyHttpUrl(f"{self.FRONTEND_URL}/api")
 
-    # Optional – only if needed for some legacy frontend links (rare in backend)
+    # Optional – only if needed for legacy frontend links (rare in backend)
     NEXT_PUBLIC_APP_URL: Optional[AnyHttpUrl] = Field(
         default=None,
         description="Frontend base URL (frontend-only; optional in backend)"
@@ -120,14 +119,21 @@ class Settings(BaseSettings):
     })
 
     # ────────────────────────────────────────────────
+    # CORS (frontend origins)
+    # ────────────────────────────────────────────────
+    CORS_ORIGINS: List[AnyHttpUrl] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def compute_cors_origins(self) -> 'Settings':
+        """Automatically populate CORS_ORIGINS from FRONTEND_URL if empty."""
+        if not self.CORS_ORIGINS:
+            self.CORS_ORIGINS = [self.FRONTEND_URL]
+        return self
+
+    # ────────────────────────────────────────────────
     # Observability & Custom Monitoring
     # ────────────────────────────────────────────────
     # SENTRY_DSN: Optional[HttpUrl] = None  # Removed - using custom Supabase logging
-
-    # ────────────────────────────────────────────────
-    # CORS (frontend origins)
-    # ────────────────────────────────────────────────
-    CORS_ORIGINS: List[AnyHttpUrl] = Field(default_factory=lambda self: [self.FRONTEND_URL])
 
     # ────────────────────────────────────────────────
     # Computed / Helpers
