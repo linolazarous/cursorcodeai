@@ -48,3 +48,8 @@ python-multipart>=0.0.9
 # Testing & dev
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+
+# Database drivers (async primary, psycopg2-binary for SQLAlchemy compat)
+asyncpg>=0.30.0
+psycopg2-binary>=2.9.9          # Required for SQLAlchemy PostgreSQL dialect compat (binary version)
+
