@@ -3,6 +3,7 @@
 Central configuration & settings for CursorCode AI API
 Loads from environment variables with strict validation (pydantic-settings v2+).
 Production-ready (February 2026): type-safe, computed props, secrets handling.
+Uses Resend for email sending (SendGrid migration complete).
 """
 
 from functools import lru_cache
@@ -85,14 +86,16 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: SecretStr
 
     # ────────────────────────────────────────────────
-    # SendGrid Email
+    # Resend Email (replaced SendGrid)
     # ────────────────────────────────────────────────
-    SENDGRID_API_KEY: SecretStr
-    EMAIL_FROM: EmailStr = "info@cursorcode.ai"
-    SENDGRID_VERIFY_TEMPLATE_ID: str = Field(..., description="SendGrid dynamic template ID")
-    SENDGRID_RESET_TEMPLATE_ID: str = Field(..., description="Password reset template")
-    SENDGRID_2FA_ENABLED_TEMPLATE_ID: str = Field(..., description="2FA enabled template")
-    SENDGRID_2FA_DISABLED_TEMPLATE_ID: str = Field(..., description="2FA disabled template")
+    RESEND_API_KEY: SecretStr = Field(
+        ...,
+        description="Resend API key for sending emails"
+    )
+    EMAIL_FROM: EmailStr = Field(
+        "no-reply@cursorcode.ai",
+        description="Default sender email (must be verified in Resend dashboard)"
+    )
 
     # ────────────────────────────────────────────────
     # xAI / Grok API
@@ -129,11 +132,6 @@ class Settings(BaseSettings):
         if not self.CORS_ORIGINS:
             self.CORS_ORIGINS = [self.FRONTEND_URL]
         return self
-
-    # ────────────────────────────────────────────────
-    # Observability & Custom Monitoring
-    # ────────────────────────────────────────────────
-    # SENTRY_DSN: Optional[HttpUrl] = None  # Removed - using custom Supabase logging
 
     # ────────────────────────────────────────────────
     # Computed / Helpers
