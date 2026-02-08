@@ -3,7 +3,7 @@
 Database session management for CursorCode AI.
 Async SQLAlchemy engine, session factory, and FastAPI dependency.
 Production-ready: connection pooling, transaction handling, async support.
-Supabase-ready: external managed Postgres, no engine dispose on shutdown.
+Supabase-ready: uses pooled connection (recommended for Render/Fly/Railway).
 """
 
 import logging
@@ -21,17 +21,18 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────
-# SQLAlchemy Async Engine (Supabase compatible)
+# SQLAlchemy Async Engine (Supabase pooled connection)
 # ────────────────────────────────────────────────
 engine: AsyncEngine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.ENVIRONMENT == "development",      # SQL logging in dev only
+    str(settings.DATABASE_URL),                      # str() ensures plain string (Pydantic PostgresDsn → str)
+    echo=settings.ENVIRONMENT == "development",      # SQL logging only in dev
     future=True,
-    pool_pre_ping=True,                              # Critical for Supabase pooling (detects stale connections)
-    pool_size=15,                                    # Conservative for Supabase free tier; increase on paid
-    max_overflow=5,
-    pool_timeout=30,
-    pool_recycle=1800,                               # Recycle every 30 min (helps with Supabase connection limits)
+    pool_pre_ping=True,                              # Very important for Supabase pooling — detects broken/stale connections
+    pool_size=10,                                    # Reasonable for pooled (Supabase free tier limit ~15-20)
+    max_overflow=5,                                  # Allow some extra connections during spikes
+    pool_timeout=30,                                 # Wait time to get connection from pool
+    pool_recycle=600,                                # Recycle connections every 10 min (helps with Supabase idle timeouts)
+    connect_args={"ssl": True} if "supabase" in str(settings.DATABASE_URL).lower() else {},  # Force SSL for Supabase
 )
 
 # ────────────────────────────────────────────────
@@ -74,11 +75,12 @@ def get_engine() -> AsyncEngine:
 # Init function (call on startup – only tests connection)
 # ────────────────────────────────────────────────
 async def init_db():
-    """Run on app startup – test connection to Supabase Postgres."""
+    """Run on app startup – test connection to Supabase Postgres (pooled)."""
     try:
         async with engine.connect() as conn:
             await conn.execute("SELECT 1")
-        db_type = "Supabase" if "supabase" in str(settings.DATABASE_URL).lower() else "PostgreSQL"
+        
+        db_type = "Supabase (pooled)" if "pooler" in str(settings.DATABASE_URL).lower() else "PostgreSQL"
         logger.info(f"{db_type} connection verified successfully")
     except Exception as e:
         logger.critical("Database connection failed on startup", exc_info=True)
