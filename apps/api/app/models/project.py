@@ -11,9 +11,6 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
-    Column,
-    DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -22,12 +19,18 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from enum import Enum as PyEnum
 
 from app.db.base import Base
 
-class ProjectStatus(str, Enum):
+
+class ProjectStatus(str, PyEnum):
+    """
+    Project lifecycle states.
+    Stored as native PostgreSQL ENUM type.
+    """
     PENDING = "pending"
     BUILDING = "building"
     COMPLETED = "completed"
@@ -44,7 +47,14 @@ class Project(Base):
     - Tracks generated code, deployment, status, logs
     - Supports version history, RAG memory, rollback
     """
+
     __tablename__ = "projects"
+    __table_args__ = (
+        {'extend_existing': True},  # Safeguard against duplicate table registration
+        Index("ix_projects_user_id_status", "user_id", "status"),
+        Index("ix_projects_org_id", "org_id"),
+        Index("ix_projects_deploy_url", "deploy_url"),
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=True),
@@ -56,32 +66,32 @@ class Project(Base):
 
     # Core
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Auto-generated or user-set
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Status & Lifecycle
     status: Mapped[ProjectStatus] = mapped_column(
-        Enum(ProjectStatus),
+        ENUM(ProjectStatus, name="project_status_enum", native_enum=True),
         default=ProjectStatus.PENDING,
         nullable=False,
-        index=True
+        index=True,
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    logs: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)  # Agent logs / steps
+    logs: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
 
     # Generated Artifacts
-    code_repo_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)  # Git URL or internal storage
-    deploy_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)     # *.cursorcode.app or external
-    preview_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)    # Live preview
-    openapi_spec: Mapped[Optional[str]] = mapped_column(Text, nullable=True)          # Auto-generated OpenAPI
+    code_repo_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    deploy_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    preview_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    openapi_spec: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Versioning & Rollback
     current_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    versions: Mapped[Optional[List[dict]]] = mapped_column(JSON, nullable=True)       # History: [{"version": 1, "commit": "...", "timestamp": "..."}]
+    versions: Mapped[Optional[List[dict]]] = mapped_column(JSON, nullable=True)
 
     # AI Features
-    rag_embeddings: Mapped[Optional[bytes]] = mapped_column(String(1536 * 4), nullable=True)  # pgvector vector(1536) for Grok embeddings
-    memory_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)              # Cached RAG results
+    rag_embeddings: Mapped[Optional[bytes]] = mapped_column(String(1536 * 4), nullable=True)  # pgvector vector(1536)
+    memory_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Ownership & Tenant
     user_id: Mapped[str] = mapped_column(
@@ -97,45 +107,40 @@ class Project(Base):
         index=True,
     )
 
+    # Relationships
     user: Mapped["User"] = relationship("User", back_populates="projects")
     org: Mapped["Org"] = relationship("Org", back_populates="projects")
 
     # Timestamps & Soft Delete
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        server_default=func.now(),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
 
-    __table_args__ = (
-        Index("ix_projects_user_id_status", "user_id", "status"),
-        Index("ix_projects_org_id", "org_id"),
-        Index("ix_projects_deploy_url", "deploy_url"),
-    )
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Project(id={self.id}, title={self.title}, status={self.status}, org_id={self.org_id})>"
 
     @property
     def is_active(self) -> bool:
         return self.deleted_at is None and self.status not in [ProjectStatus.FAILED]
 
-    def update_status(self, new_status: ProjectStatus, message: Optional[str] = None):
+    def update_status(self, new_status: ProjectStatus, message: Optional[str] = None) -> None:
         self.status = new_status
         if message:
             self.error_message = message
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.utcnow()
 
-    def add_version(self, commit_hash: str, changes: dict):
+    def add_version(self, commit_hash: str, changes: dict) -> None:
         version_data = {
             "version": self.current_version + 1,
             "commit": commit_hash,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.utcnow().isoformat(),
             "changes": changes
         }
         if not self.versions:
