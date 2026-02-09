@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/web/public/logo.svg" alt="CursorCode AI Logo" width="180" />
+  <img src="/apps/web/public/logo.svg" alt="CursorCode AI Logo" width="180" />
 </p>
 
 <h1 align="center">CursorCode AI</h1>
@@ -103,3 +103,4 @@ CursorCode AI operates as a **self-directing AI engineering organization**, capa
 git clone https://github.com/your-org/cursorcode-ai.git
 cd cursorcode-ai
 pnpm install
+
