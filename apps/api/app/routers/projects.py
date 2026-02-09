@@ -6,6 +6,7 @@ Includes credit checks, orchestration trigger, multi-tenant scoping, audit loggi
 """
 
 import logging
+from datetime import datetime
 from typing import List, Annotated, Optional
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from fastapi import (
     status,
     BackgroundTasks,
     Query,
+    Request,  # Required for slowapi rate limiting
 )
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
@@ -80,10 +82,11 @@ class ProjectOut(BaseModel):
 )
 @limiter.limit("5/minute")
 async def create_project(
+    request: Request,
     payload: ProjectCreate,
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
     background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new project from prompt.
@@ -101,7 +104,7 @@ async def create_project(
 
     project = Project(
         prompt=payload.prompt,
-        title=payload.title or f"Project {uuid4().hex[:8]}",
+        title=payload.title or f"Project {UUID().hex[:8]}",
         status=ProjectStatus.PENDING,
         user_id=UUID(current_user.id),
         org_id=UUID(current_user.org_id),
@@ -135,12 +138,12 @@ async def create_project(
         send_email_task.delay,
         to=current_user.email,
         subject="New Project Started - CursorCode AI",
-        template_id=settings.SENDGRID_PROJECT_STARTED_TEMPLATE_ID,
-        dynamic_data={
-            "project_title": project.title,
-            "prompt": payload.prompt[:200] + "..." if len(payload.prompt) > 200 else payload.prompt,
-            "dashboard_url": f"{settings.FRONTEND_URL}/projects/{project.id}"
-        },
+        html=f"""
+        <h2>New Project Created!</h2>
+        <p>Your project "{project.title}" has been started.</p>
+        <p>We'll notify you when it's ready.</p>
+        <p><a href="{settings.FRONTEND_URL}/projects/{project.id}">View in dashboard</a></p>
+        """,
     )
 
     return project
@@ -268,7 +271,7 @@ async def delete_project(
     if "org_owner" not in current_user.roles and str(project.user_id) != current_user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
 
-    project.deleted_at = datetime.now(timezone.utc)
+    project.deleted_at = datetime.utcnow()
     await db.commit()
 
     audit_log.delay(
