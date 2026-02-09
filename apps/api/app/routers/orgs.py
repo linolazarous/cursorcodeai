@@ -7,7 +7,7 @@ Only org_owners/admins can manage their org.
 """
 
 import logging
-from typing import List, Annotated, Optional
+from typing import List, Annotated, Optional, Dict
 from uuid import UUID
 
 from fastapi import (
@@ -17,9 +17,11 @@ from fastapi import (
     status,
     BackgroundTasks,
     Query,
+    Request,           # ← Required for slowapi rate limiting
+    Response,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import Limiter
 
@@ -64,14 +66,10 @@ class OrgOut(BaseModel):
     response_model=OrgOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create new organization",
-    responses={
-        201: {"description": "Organization created"},
-        400: {"description": "Invalid data or slug conflict"},
-        429: {"description": "Rate limit exceeded"},
-    }
 )
 @limiter.limit("3/minute")
 async def create_org(
+    request: Request,  # ← Required for slowapi
     payload: OrgCreate,
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
@@ -87,7 +85,7 @@ async def create_org(
 
     org = Org(
         name=payload.name,
-        slug=payload.slug or f"org-{uuid4().hex[:8]}",  # Auto-generate if missing
+        slug=payload.slug or f"org-{UUID().hex[:8]}",  # Auto-generate if missing
     )
     db.add(org)
     await db.flush()  # Get org.id
@@ -138,7 +136,7 @@ async def list_orgs(
     result = await db.execute(stmt)
     orgs = result.scalars().all()
 
-    # Compute member count (optional optimization: cache in Redis)
+    # Compute member count
     for org in orgs:
         count_stmt = select(func.count(User.id)).where(User.org_id == org.id)
         count = await db.scalar(count_stmt)
@@ -164,11 +162,9 @@ async def get_org(
     if not org:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
 
-    # Membership check
     if UUID(current_user.org_id) != org_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this organization")
 
-    # Member count
     count_stmt = select(func.count(User.id)).where(User.org_id == org_id)
     count = await db.scalar(count_stmt)
     org.member_count = count or 0
@@ -181,7 +177,9 @@ async def get_org(
     response_model=OrgOut,
     summary="Update organization (name/slug)",
 )
+@limiter.limit("3/minute")
 async def update_org(
+    request: Request,  # ← Required for slowapi
     org_id: UUID,
     payload: OrgUpdate,
     current_user: Annotated[AuthUser, Depends(require_org_owner)],
@@ -220,7 +218,9 @@ async def update_org(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete/soft-delete organization",
 )
+@limiter.limit("1/minute")
 async def delete_org(
+    request: Request,  # ← Required for slowapi
     org_id: UUID,
     current_user: Annotated[AuthUser, Depends(require_org_owner)],
     db: AsyncSession = Depends(get_db),
@@ -248,27 +248,25 @@ async def delete_org(
 @router.post(
     "/switch/{org_id}",
     response_model=Dict[str, str],
-    summary="Switch active organization (for multi-org users)",
+    summary="Switch active organization",
 )
+@limiter.limit("5/minute")
 async def switch_org(
+    request: Request,  # ← Required for slowapi
     org_id: UUID,
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Future-proof: Switch current active org (updates JWT claims on next refresh).
-    For now, just validates membership.
+    Switch current active org (future-proof for multi-org JWT claims).
     """
-    # Check membership
     membership = await db.scalar(
         select(User).where(User.id == UUID(current_user.id), User.org_id == org_id)
     )
     if not membership:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this organization")
 
-    # In v2: issue new JWT with updated org_id claim
-    # For now: just return success
     audit_log.delay(
         current_user.id,
         "org_switched",
