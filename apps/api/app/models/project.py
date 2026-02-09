@@ -19,7 +19,7 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID, ENUM
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from enum import Enum as PyEnum
 
@@ -49,11 +49,13 @@ class Project(Base):
     """
 
     __tablename__ = "projects"
+
+    # Correct __table_args__: indexes first, dict last
     __table_args__ = (
-        {'extend_existing': True},  # Safeguard against duplicate table registration
         Index("ix_projects_user_id_status", "user_id", "status"),
         Index("ix_projects_org_id", "org_id"),
         Index("ix_projects_deploy_url", "deploy_url"),
+        {'extend_existing': True},  # ← dict as last element
     )
 
     id: Mapped[str] = mapped_column(
