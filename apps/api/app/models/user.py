@@ -10,9 +10,6 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
-    Column,
-    DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -23,10 +20,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from enum import Enum as PyEnum
 
-from app.db.base import Base  # Your declarative base / metadata
+from app.db.base import Base
 
-class UserRole(str, Enum):
+
+class UserRole(str, PyEnum):
     USER = "user"
     ADMIN = "admin"
     ORG_OWNER = "org_owner"
@@ -40,6 +39,10 @@ class Org(Base):
     - Can have multiple users (team accounts)
     """
     __tablename__ = "orgs"
+    __table_args__ = (
+        Index("ix_orgs_slug", "slug"),
+        {'extend_existing': True},  # Safeguard against duplicate table registration
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=True),
@@ -50,27 +53,16 @@ class Org(Base):
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    slug: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True, index=True)  # e.g. "acme-corp"
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    slug: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
 
     # Relationships
     users: Mapped[List["User"]] = relationship("User", back_populates="org", cascade="all, delete-orphan")
     projects: Mapped[List["Project"]] = relationship("Project", back_populates="org", cascade="all, delete-orphan")
 
-    __table_args__ = (
-        Index("ix_orgs_slug", "slug"),
-    )
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Org(id={self.id}, name={self.name}, slug={self.slug})>"
 
 
@@ -82,6 +74,13 @@ class User(Base):
     - Full billing, 2FA, verification, reset support
     """
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_email_verified", "email", "is_verified"),
+        Index("ix_users_stripe_customer_id", "stripe_customer_id"),
+        Index("ix_users_org_id_role", "org_id", "roles"),
+        Index("ix_users_deleted_at", "deleted_at"),
+        {'extend_existing': True},
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=True),
@@ -98,11 +97,11 @@ class User(Base):
     # Verification
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     verification_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
-    verification_expires: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    verification_expires: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     # Password Reset
     reset_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Hashed
-    reset_expires: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_expires: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     # 2FA (TOTP)
     totp_secret: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
@@ -127,29 +126,14 @@ class User(Base):
     subscription_status: Mapped[str] = mapped_column(String(50), default="inactive", nullable=False)
 
     # Audit & Lifecycle
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
 
     # Relationships
-    projects: Mapped[List["Project"]] = relationship(
-        "Project", back_populates="user", cascade="all, delete-orphan"
-    )
+    projects: Mapped[List["Project"]] = relationship("Project", back_populates="user", cascade="all, delete-orphan")
 
-    __table_args__ = (
-        Index("ix_users_email_verified", "email", "is_verified"),
-        Index("ix_users_stripe_customer_id", "stripe_customer_id"),
-        Index("ix_users_org_id_role", "org_id", "roles"),
-    )
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email}, org_id={self.org_id}, plan={self.plan})>"
 
     @property
