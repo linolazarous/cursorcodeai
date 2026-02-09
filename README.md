@@ -2,62 +2,100 @@
   <img src="apps/web/public/logo.svg" alt="CursorCode AI Logo" width="180" />
 </p>
 
-# CursorCode AI
+<h1 align="center">CursorCode AI</h1>
 
-**Build Anything. Automatically. With AI.**
+<p align="center">
+  <strong>Build Anything. Automatically. With AI.</strong>
+</p>
 
-CursorCode AI is the world’s most powerful autonomous AI software engineering platform — powered by xAI's Grok family with intelligent multi-model routing.
+<p align="center">
+  <a href="https://cursorcode.ai">🌐 Live</a> ·
+  <a href="mailto:info@cursorcode.ai">📧 Contact</a>
+</p>
 
-It replaces entire development teams by understanding natural language prompts, designing architecture, writing production-grade code, testing, securing, deploying, and maintaining full-stack applications — all with zero manual DevOps.
+---
 
-Unlike Cursor AI (editor with agents), Emergent (conversational builder), Hercules (regulated workflows), or Code Conductor (no-code), CursorCode AI is a **self-directing AI engineering organization** that delivers enterprise-ready SaaS, mobile apps, and AI-native products.
+## What is CursorCode AI?
 
-**Live:** https://cursorcode.ai  
-**Contact:** info@cursorcode.ai
+**CursorCode AI** is a fully autonomous AI software engineering platform — powered by **xAI’s Grok family** with intelligent multi-model routing.
 
-## Features
+It goes far beyond copilots and no-code tools.
 
-- Natural language → full production codebases (Next.js, FastAPI, Postgres, Stripe, auth, RBAC, etc.)
-- Multi-agent system (Architect → Frontend/Backend → Security/QA → DevOps)
-- Grok-powered: `grok-4-latest` (deep reasoning), `grok-4-1-fast-reasoning` (agentic/tool use), `grok-4-1-fast-non-reasoning` (high-throughput)
-- Real-time RAG/memory (pgvector), tools, self-debugging, auto-tests
-- Native deployment (*.cursorcode.app), external (Vercel, Railway, etc.)
-- Stripe billing (subscriptions + metered usage), SendGrid notifications
-- Secure auth (JWT, OAuth, 2FA/TOTP), multi-tenant organizations
-- User & admin dashboards, project history, credit metering
+CursorCode AI understands natural language prompts, **designs system architecture, writes production-grade code, tests, secures, deploys, and maintains full-stack applications** — end to end, with **zero manual DevOps**.
 
-## Tech Stack
+Unlike:
+- **Cursor AI** (editor + agents)
+- **Emergent** (conversational builder)
+- **Hercules** (regulated workflows)
+- **Code Conductor** (no-code)
 
-**Frontend** (Next.js App Router)
-- React 18, TypeScript, Tailwind CSS + shadcn/ui
-- NextAuth v5 / Auth.js (credentials + Google/GitHub OAuth)
-- TanStack Query (data fetching/polling)
-- Zod, react-hook-form, sonner (toasts)
+CursorCode AI operates as a **self-directing AI engineering organization**, capable of delivering enterprise-ready **SaaS platforms, mobile apps, and AI-native products** autonomously.
 
-**Backend** (FastAPI)
-- Python 3.12, SQLAlchemy 2.0 + asyncpg
-- Supabase PostgreSQL (managed DB + pgvector for RAG)
-- LangGraph + LangChain-xAI (agent orchestration)
-- Celery + Upstash Redis (async tasks, retries, rate limiting)
-- Stripe (subscriptions + metered billing), SendGrid (email)
+---
 
-**Infra & DevOps**
-- Docker + docker-compose (local – only Redis optional)
-- Supabase (database), Upstash (Redis)
+## Core Capabilities
+
+- **Natural language → complete production codebases**
+  - Next.js, FastAPI, PostgreSQL, Stripe, Auth, RBAC, and more
+- **Multi-agent architecture**
+  - Architect → Frontend → Backend → Security/QA → DevOps
+- **Grok-powered multi-model routing**
+  - `grok-4-latest` – deep reasoning & architecture
+  - `grok-4-1-fast-reasoning` – agent execution & tools
+  - `grok-4-1-fast-non-reasoning` – high-throughput tasks
+- **Real-time memory & RAG**
+  - pgvector, long-term project memory, self-debugging
+- **Automated testing & self-healing**
+- **Native & external deployments**
+  - `*.cursorcode.app`, Vercel, Railway, Render, Fly.io
+- **Built-in billing & notifications**
+  - Stripe (subscriptions + metered usage), SendGrid
+- **Enterprise-grade security**
+  - JWT, OAuth, 2FA/TOTP, RBAC, multi-tenant orgs
+- **User & admin dashboards**
+  - Project history, usage analytics, credit metering
+
+---
+
+## Technology Stack
+
+### Frontend — Next.js (App Router)
+- React 18, TypeScript
+- Tailwind CSS + shadcn/ui
+- NextAuth v5 / Auth.js (Credentials, Google, GitHub)
+- TanStack Query
+- Zod, react-hook-form, sonner
+
+### Backend — FastAPI
+- Python 3.12
+- SQLAlchemy 2.0 + asyncpg
+- Supabase PostgreSQL + pgvector
+- LangGraph + LangChain-xAI
+- Celery + Upstash Redis
+- Stripe, SendGrid
+
+### Infrastructure & DevOps
+- Docker & docker-compose
+- Supabase (Postgres)
+- Upstash (Redis)
 - GitHub Actions (CI/CD)
-- Sentry (error monitoring)
+- Sentry (monitoring)
 
-**AI** — xAI Grok family (multi-model routing)
+### AI Layer
+- **xAI Grok family** with intelligent routing
 
-## Quick Start (Local Development with Supabase + Upstash)
+---
+
+## Quick Start — Local Development
 
 ### Prerequisites
+- Node.js **20+** & pnpm **9+**
+- Python **3.12+**
+- Docker (optional)
+- Supabase account
+- Upstash account
 
-- Node.js 20+ & pnpm 9+
-- Python 3.12+ & pip
-- Docker + docker-compose (optional – only for local Redis if you prefer)
-- Supabase account (free tier is sufficient)
-- Upstash account (free tier works great)
+---
 
 ### 1. Clone & Install
 
@@ -65,15 +103,3 @@ Unlike Cursor AI (editor with agents), Emergent (conversational builder), Hercul
 git clone https://github.com/your-org/cursorcode-ai.git
 cd cursorcode-ai
 pnpm install
-
-# Backend
-cd apps/api
-uvicorn app.main:app --reload --port 8000
-
-# Frontend
-cd apps/web
-pnpm dev
-
-- a **dark-mode optimized logo**
-- a **badge-style header**
-- or the logo to link to `cursorcode.ai`
