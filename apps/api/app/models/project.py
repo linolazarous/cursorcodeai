@@ -1,4 +1,4 @@
-# apps/api/app/models/project.py
+# apps/api/app/db/models/project.py
 """
 SQLAlchemy Project Model - CursorCode AI
 Represents an autonomously generated software project.
@@ -6,7 +6,7 @@ Multi-tenant scoped, tracks full lifecycle (prompt → build → deploy → main
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -17,12 +17,13 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    Enum as SQLEnum,
 )
-from sqlalchemy.dialects.postgresql import UUID, ENUM  # ← Added ENUM here!
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from enum import Enum as PyEnum
 
-from app.db.base import Base
+from app.db.base import Base, TimestampMixin
 
 
 class ProjectStatus(str, PyEnum):
@@ -38,21 +39,20 @@ class ProjectStatus(str, PyEnum):
     MAINTAINING = "maintaining"
 
 
-class Project(Base):
+class Project(Base, TimestampMixin):
     """
     Project Entity
     - Created from user prompt via AI agents
-    - Scoped to Organization (multi-tenant)
+    - Scoped to Organization & User (multi-tenant)
     - Tracks generated code, deployment, status, logs
-    - Supports version history, RAG memory, rollback
+    - Supports versioning, RAG memory, rollback
     """
-
     __tablename__ = "projects"
-
     __table_args__ = (
         Index("ix_projects_user_id_status", "user_id", "status"),
         Index("ix_projects_org_id", "org_id"),
         Index("ix_projects_deploy_url", "deploy_url"),
+        Index("ix_projects_deleted_at", "deleted_at"),
         {'extend_existing': True},
     )
 
@@ -71,7 +71,7 @@ class Project(Base):
 
     # Status & Lifecycle
     status: Mapped[ProjectStatus] = mapped_column(
-        ENUM(ProjectStatus, name="project_status_enum", native_enum=True),
+        SQLEnum(ProjectStatus, name="project_status_enum", native_enum=True),
         default=ProjectStatus.PENDING,
         nullable=False,
         index=True,
@@ -87,11 +87,13 @@ class Project(Base):
 
     # Versioning & Rollback
     current_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    versions: Mapped[Optional[List[dict]]] = mapped_column(JSON, nullable=True)
+    versions: Mapped[Optional[List[Dict]]] = mapped_column(JSON, nullable=True)
 
-    # AI Features
-    rag_embeddings: Mapped[Optional[bytes]] = mapped_column(String(1536 * 4), nullable=True)  # pgvector vector(1536)
-    memory_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # AI Features (RAG / Memory)
+    rag_embeddings: Mapped[Optional[bytes]] = mapped_column(
+        String(1536 * 4), nullable=True  # pgvector vector(1536) as binary
+    )
+    memory_context: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
 
     # Ownership & Tenant
     user_id: Mapped[str] = mapped_column(
@@ -111,39 +113,36 @@ class Project(Base):
     user: Mapped["User"] = relationship("User", back_populates="projects")
     org: Mapped["Org"] = relationship("Org", back_populates="projects")
 
-    # Timestamps & Soft Delete
-    created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
-        nullable=False,
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
+    # Lifecycle
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
 
     def __repr__(self) -> str:
-        return f"<Project(id={self.id}, title={self.title}, status={self.status}, org_id={self.org_id})>"
+        return (
+            f"<Project(id={self.id}, title={self.title}, "
+            f"status={self.status}, org_id={self.org_id}, user_id={self.user_id})>"
+        )
 
     @property
     def is_active(self) -> bool:
+        """Project is usable (not deleted and not in terminal failed state)."""
         return self.deleted_at is None and self.status not in [ProjectStatus.FAILED]
 
     def update_status(self, new_status: ProjectStatus, message: Optional[str] = None) -> None:
+        """Update project status with optional error message."""
         self.status = new_status
         if message:
             self.error_message = message
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
-    def add_version(self, commit_hash: str, changes: dict) -> None:
+    def add_version(self, commit_hash: str, changes: Dict) -> None:
+        """Add new version entry to the project history."""
         version_data = {
             "version": self.current_version + 1,
             "commit": commit_hash,
-            "timestamp": datetime.utcnow().isoformat(),
-            "changes": changes
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "changes": changes,
         }
-        if not self.versions:
+        if self.versions is None:
             self.versions = []
         self.versions.append(version_data)
         self.current_version += 1
