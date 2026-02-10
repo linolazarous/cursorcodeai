@@ -7,6 +7,7 @@ Supabase-ready: uses pooled connection (recommended for Render/Fly/Railway).
 """
 
 import logging
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -15,32 +16,38 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy import text
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────
-# SQLAlchemy Async Engine (Supabase pooled connection)
+# Global Async Engine (singleton – created once)
 # ────────────────────────────────────────────────
 engine: AsyncEngine = create_async_engine(
-    str(settings.DATABASE_URL),                      # str() ensures plain string (Pydantic PostgresDsn → str)
-    echo=settings.ENVIRONMENT == "development",      # SQL logging only in dev
+    str(settings.DATABASE_URL),
+    echo=settings.ENVIRONMENT == "development",  # SQL logging only in dev
     future=True,
-    pool_pre_ping=True,                              # Very important for Supabase pooling — detects broken/stale connections
-    pool_size=10,                                    # Reasonable for pooled (Supabase free tier limit ~15-20)
-    max_overflow=5,                                  # Allow some extra connections during spikes
-    pool_timeout=30,                                 # Wait time to get connection from pool
-    pool_recycle=600,                                # Recycle connections every 10 min (helps with Supabase idle timeouts)
-    connect_args={"ssl": True} if "supabase" in str(settings.DATABASE_URL).lower() else {},  # Force SSL for Supabase
+    # Pooling tuned for Supabase + serverless platforms
+    pool_pre_ping=True,           # Detect & replace broken connections
+    pool_size=10,                 # Base pool size (Supabase free \~15-20 concurrent ok)
+    max_overflow=5,               # Allow bursts
+    pool_timeout=30,              # Wait time for connection
+    pool_recycle=600,             # Recycle every 10 min (helps with Supabase idle timeouts)
+    connect_args={
+        "ssl": True,              # Supabase requires SSL
+        "connect_timeout": 15,    # Fail fast on bad connections
+    } if "supabase" in str(settings.DATABASE_URL).lower() else {},
 )
 
+
 # ────────────────────────────────────────────────
-# Async Session Factory
+# Async Session Factory (per-request sessions)
 # ────────────────────────────────────────────────
 async_session_factory = async_sessionmaker(
     engine,
-    expire_on_commit=False,
+    expire_on_commit=False,       # Prevent expired objects after commit
     class_=AsyncSession,
 )
 
@@ -50,8 +57,8 @@ async_session_factory = async_sessionmaker(
 # ────────────────────────────────────────────────
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    FastAPI dependency: provides a new async session per request.
-    Automatically commits/rolls back and closes the session.
+    FastAPI dependency: yields a new async session per request.
+    Automatically commits on success, rolls back on error, closes always.
     """
     async with async_session_factory() as session:
         try:
@@ -65,36 +72,46 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 # ────────────────────────────────────────────────
-# Utility: get engine (for migrations, CLI tools, tests)
+# Startup: Test connection (called from lifespan)
+# ────────────────────────────────────────────────
+async def init_db():
+    """
+    Run on app startup – verifies connection to Supabase/PostgreSQL.
+    Logs success or raises critical error.
+    """
+    try:
+        async with engine.connect() as conn:
+            # Simple health check query
+            await conn.execute(text("SELECT 1"))
+            await conn.commit()
+
+        db_type = "Supabase (pooled)" if "supabase" in str(settings.DATABASE_URL).lower() else "PostgreSQL"
+        logger.info(f"{db_type} connection verified successfully")
+
+    except Exception as e:
+        logger.critical("Database connection failed on startup", exc_info=True)
+        raise RuntimeError("Database unavailable") from e
+
+
+# ────────────────────────────────────────────────
+# Lifespan context manager (use in main.py)
+# ────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app):
+    """
+    FastAPI lifespan handler – initialize & clean up database connections.
+    """
+    await init_db()  # Test connection on startup
+
+    yield  # App runs here
+
+    # Graceful shutdown – close all pooled connections
+    await engine.dispose()
+    logger.info("Database engine disposed on shutdown")
+
+
+# ────────────────────────────────────────────────
+# Utility: Get raw engine (for Alembic migrations, CLI tools, tests)
 # ────────────────────────────────────────────────
 def get_engine() -> AsyncEngine:
     return engine
-
-
-# ────────────────────────────────────────────────
-# Init function (call on startup – only tests connection)
-# ────────────────────────────────────────────────
-async def init_db():
-    """Run on app startup – test connection to Supabase Postgres (pooled)."""
-    try:
-        async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
-        
-        db_type = "Supabase (pooled)" if "pooler" in str(settings.DATABASE_URL).lower() else "PostgreSQL"
-        logger.info(f"{db_type} connection verified successfully")
-    except Exception as e:
-        logger.critical("Database connection failed on startup", exc_info=True)
-        raise
-
-
-# ────────────────────────────────────────────────
-# Usage in main.py (lifespan)
-# ────────────────────────────────────────────────
-"""
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_db()           # only tests connection
-    yield
-    # No engine.dispose() needed with Supabase external pooling
-    logger.info("Shutdown complete")
-"""
