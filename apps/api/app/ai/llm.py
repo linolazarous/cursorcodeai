@@ -1,18 +1,17 @@
 # apps/api/app/ai/llm.py
 """
 Grok LLM Factory - CursorCode AI
-Creates routed ChatGroq instances with optimal model, parameters, and tools.
+Creates routed LLM instances with optimal model, parameters, and tools.
 Production-ready (February 2026): caching, tier-aware routing, dynamic params, streaming support.
-Uses official langchain-groq integration + custom programmatic monitoring.
+Uses raw httpx to xAI API (OpenAI-compatible) – no langchain-groq dependency.
 """
 
 import logging
 from functools import lru_cache
 from typing import List, Optional, Dict, Any, AsyncGenerator
 
-from langchain_groq import ChatGroq
-from langchain_core.tools import BaseTool
-from langchain_core.messages import AIMessageChunk
+import httpx
+from langchain_core.messages import AIMessageChunk, AIMessage, BaseMessage
 
 from app.core.config import settings
 from app.ai.router import get_model_for_agent
@@ -31,29 +30,60 @@ def get_llm(
     top_p: float = 0.9,
     frequency_penalty: float = 0.0,
     presence_penalty: float = 0.0,
-    tools: Optional[List[BaseTool]] = None,
-) -> ChatGroq:
+    tools: Optional[List] = None,
+):
     """
-    Cached LLM instance factory.
-    Caches based on model + generation params to avoid recreating objects.
+    Cached LLM callable factory.
+    Returns an async callable that makes xAI API calls.
+    Caches based on model + generation params.
     """
-    llm = ChatGroq(
-        model=model_name,
-        groq_api_key=settings.XAI_API_KEY.get_secret_value(),
-        base_url="https://api.x.ai/v1",
-        temperature=temperature,
-        max_tokens=max_tokens,
-        top_p=top_p,
-        frequency_penalty=frequency_penalty,
-        presence_penalty=presence_penalty,
-    )
+    async def call(messages: List[Dict[str, str]]) -> AIMessage:
+        """
+        Async callable: send messages to xAI Grok API and return AIMessage.
+        """
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "top_p": top_p,
+            "frequency_penalty": frequency_penalty,
+            "presence_penalty": presence_penalty,
+        }
 
+        # Remove None values
+        payload = {k: v for k, v in payload.items() if v is not None}
+
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                response = await client.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.XAI_API_KEY.get_secret_value()}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            return AIMessage(content=content)
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"xAI API error: {e.response.status_code} - {e.response.text}")
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during xAI API call")
+            raise
+
+    # Bind tools if provided (mock - real binding would need LangChain)
     if tools:
-        llm = llm.bind_tools(tools)
+        logger.warning("Tools binding not implemented in raw httpx mode")
 
-    logger.debug(f"Created/cached LLM: {model_name} (temp={temperature}, tokens={max_tokens})")
+    logger.debug(f"Created/cached LLM callable: {model_name} (temp={temperature}, tokens={max_tokens})")
 
-    return llm
+    return call
 
 
 # ────────────────────────────────────────────────
@@ -63,52 +93,42 @@ def get_routed_llm(
     agent_type: str,
     user_tier: str = "starter",
     task_complexity: str = "medium",
-    tools: Optional[List[BaseTool]] = None,
+    tools: Optional[List] = None,
     override_temperature: Optional[float] = None,
     override_max_tokens: Optional[int] = None,
-) -> ChatGroq:
+):
     """
-    Returns fully configured ChatGroq instance for the given agent/task.
-    Use this for non-streaming calls.
+    Returns async callable for the routed Grok model.
+    Use for non-streaming calls: await llm(messages)
     """
-    # 1. Route to optimal model
     model_name = get_model_for_agent(
         agent_type=agent_type,
         user_tier=user_tier,
         task_complexity=task_complexity,
     )
 
-    # 2. Dynamic generation parameters
+    # Dynamic parameters
+    temperature = override_temperature if override_temperature is not None else 0.7
+    max_tokens = override_max_tokens if override_max_tokens is not None else 8192
+
     if agent_type in ["architect", "security", "product"]:
         temperature = 0.2 if override_temperature is None else override_temperature
         max_tokens = 12288 if override_max_tokens is None else override_max_tokens
-        top_p = 0.85
-        frequency_penalty = 0.1
     elif agent_type in ["frontend", "backend"]:
         temperature = 0.5
         max_tokens = 8192
-        top_p = 0.9
-        frequency_penalty = 0.0
     else:
         temperature = 0.7
         max_tokens = 4096
-        top_p = 0.95
-        frequency_penalty = 0.0
 
-    temperature = override_temperature if override_temperature is not None else temperature
-    max_tokens = override_max_tokens if override_max_tokens is not None else max_tokens
-
-    # 3. Create/cached LLM
-    llm = get_llm(
+    llm_callable = get_llm(
         model_name=model_name,
         temperature=temperature,
         max_tokens=max_tokens,
-        top_p=0.9 if "reasoning" in model_name else 0.95,
-        frequency_penalty=frequency_penalty,
         tools=tools,
     )
 
-    # 4. Audit model choice
+    # Audit
     audit_log.delay(
         user_id=None,
         action="grok_llm_routed",
@@ -129,7 +149,7 @@ def get_routed_llm(
         f"{model_name} @ temp={temperature}, tokens={max_tokens}"
     )
 
-    return llm
+    return llm_callable
 
 
 # ────────────────────────────────────────────────
@@ -137,10 +157,10 @@ def get_routed_llm(
 # ────────────────────────────────────────────────
 async def stream_routed_llm(
     agent_type: str,
-    messages: List[Dict[str, Any]],  # [{"role": "user", "content": "..."}, ...]
+    messages: List[Dict[str, str]],
     user_tier: str = "starter",
     task_complexity: str = "medium",
-    tools: Optional[List[BaseTool]] = None,
+    tools: Optional[List] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
@@ -148,23 +168,20 @@ async def stream_routed_llm(
     Async generator that streams tokens from Grok API.
     Yields content chunks as they arrive.
     """
-    # 1. Route model & parameters (same as non-streaming)
     model_name = get_model_for_agent(agent_type, user_tier, task_complexity)
 
     temp = temperature if temperature is not None else 0.7
     max_t = max_tokens if max_tokens is not None else 8192
 
-    # 2. Get LLM instance
-    llm = get_llm(
+    # Get LLM callable
+    llm_callable = get_llm(
         model_name=model_name,
         temperature=temp,
         max_tokens=max_t,
-        top_p=0.9 if "reasoning" in model_name else 0.95,
-        frequency_penalty=0.0,
         tools=tools,
     )
 
-    # 3. Audit streaming call
+    # Audit streaming call
     audit_log.delay(
         user_id=None,
         action="grok_llm_stream_started",
@@ -185,18 +202,19 @@ async def stream_routed_llm(
         f"{model_name} @ temp={temp}, tokens={max_t}"
     )
 
-    # 4. Stream tokens
+    # Stream tokens
     try:
-        async for chunk in llm.astream(messages):
+        full_response = ""
+        async for chunk in llm_callable(messages):
             if isinstance(chunk, AIMessageChunk):
                 if chunk.content:
+                    full_response += chunk.content
                     yield chunk.content
+        # End of stream
+        yield "[DONE]"
     except Exception as exc:
         logger.exception("Streaming failed")
         yield f"[ERROR] Streaming failed: {str(exc)}"
-
-    # End of stream
-    yield "[DONE]"
 
 
 # ────────────────────────────────────────────────
