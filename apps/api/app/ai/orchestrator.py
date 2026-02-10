@@ -12,23 +12,18 @@ from typing import TypedDict, Annotated, Sequence, Dict, Any, List
 from uuid import uuid4
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.redis import RedisSaver
+from langgraph_checkpoint_redis.aio import AsyncRedisSaver
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_xai import ChatXAI
 from tenacity import retry, stop_after_attempt, wait_exponential
-import asyncpg
-from pgvector.asyncpg import register_vector
 
 from app.core.config import settings
 from app.db.session import async_session_factory
 from app.models.project import Project, ProjectStatus
 from app.services.billing import deduct_credits, refund_credits
-from app.services.email import (
-    send_deployment_success_email,
-    send_email_task,
-)
+from app.services.email import send_deployment_success_email
 from app.services.logging import audit_log
 from app.tasks.metering import report_grok_usage
 from .nodes import agent_node  # Per-agent node factory
@@ -62,35 +57,34 @@ class AgentState(TypedDict):
 async def get_project_memory(prompt: str, org_id: str) -> Dict:
     """
     Retrieve similar past projects via vector similarity (pgvector).
+    Placeholder → replace with real embedding generation + query.
     """
     try:
-        conn = await asyncpg.connect(settings.DATABASE_URL)
-        await register_vector(conn)
+        async with async_session_factory() as db:
+            # Mock: in real impl, generate embedding from prompt using Grok/OpenAI
+            embedding = [0.0] * 1536
 
-        # Assume embeddings table: id, embedding (vector(1536)), content, org_id
-        # Mock embedding (in prod: use Grok or OpenAI embeddings)
-        embedding = [0.0] * 1536  # Replace with real embedding call
+            # Query similar embeddings (assumes embeddings table exists)
+            result = await db.execute(
+                """
+                SELECT content, metadata, 1 - (embedding <=> :emb) as similarity
+                FROM embeddings
+                WHERE org_id = :org_id
+                ORDER BY embedding <=> :emb
+                LIMIT 3
+                """,
+                {"emb": embedding, "org_id": org_id}
+            )
+            rows = result.fetchall()
 
-        results = await conn.fetch(
-            """
-            SELECT content, metadata
-            FROM embeddings
-            WHERE org_id = $1
-            ORDER BY embedding <-> $2
-            LIMIT 3
-            """,
-            org_id, embedding
-        )
-        await conn.close()
-
-        return {
-            "similar_projects": [
-                {"content": r["content"], "metadata": r["metadata"]}
-                for r in results
-            ]
-        }
+            return {
+                "similar_projects": [
+                    {"content": r[0], "metadata": r[1], "similarity": r[2]}
+                    for r in rows
+                ]
+            }
     except Exception as e:
-        logger.exception("RAG failed")
+        logger.exception("RAG retrieval failed")
         return {"similar_projects": []}
 
 
@@ -118,24 +112,29 @@ def should_continue(state: AgentState) -> str:
 async def error_handler(state: AgentState) -> Dict:
     logger.error(f"Project {state['project_id']} failed: {state['errors']}")
 
-    # Refund credits
-    await refund_credits(
-        user_id=state["user_id"],
-        amount=10,  # Adjust based on actual usage
-        reason="Project build failed",
-        db=await async_session_factory().__anext__(),
-    )
+    async with async_session_factory() as db:
+        # Refund credits
+        await refund_credits(
+            user_id=state["user_id"],
+            amount=10,  # Adjust based on actual usage
+            reason="Project orchestration failed",
+            db=db,
+        )
 
-    # Notify user
-    send_email_task.delay(
-        to="user_email_from_db",  # Resolve in real impl
-        subject="Project Build Failed",
-        template_id=settings.SENDGRID_BUILD_FAILED_TEMPLATE_ID,
-        dynamic_data={
-            "project_id": state["project_id"],
-            "errors": "\n".join(state["errors"]),
-            "support_url": f"{settings.FRONTEND_URL}/support"
-        }
+        # Update project status
+        project = await db.get(Project, state["project_id"])
+        if project:
+            project.status = ProjectStatus.FAILED
+            project.error_message = "\n".join(state["errors"])
+            await db.commit()
+
+    # Notify user (async)
+    asyncio.create_task(
+        send_deployment_success_email(
+            email="user_email_placeholder",  # Resolve from DB in real impl
+            project_title="Failed Project",
+            deploy_url="N/A",
+        )
     )
 
     return {"messages": [AIMessage(content="Build failed due to errors")]}
@@ -150,7 +149,10 @@ def build_agent_graph():
     # RAG Inject Node
     async def rag_inject(state: AgentState):
         memory = await get_project_memory(state["prompt"], state["org_id"])
-        return {"memory": memory, "messages": [HumanMessage(content=state["prompt"])]}
+        return {
+            "memory": memory,
+            "messages": [HumanMessage(content=state["prompt"])]
+        }
 
     graph.add_node("rag_inject", rag_inject)
 
@@ -175,40 +177,21 @@ def build_agent_graph():
     graph.set_entry_point("rag_inject")
     graph.add_edge("rag_inject", "architect")
 
-    # Architect → Tools loop or next
-    graph.add_conditional_edges(
-        "architect",
-        should_continue,
-        {"tools": "tools", "next": "frontend", "error_handler": "error_handler"}
-    )
-    graph.add_edge("tools", "architect")
+    # Conditional routing after each agent
+    for agent in ["architect", "frontend", "backend", "security", "qa", "devops"]:
+        graph.add_conditional_edges(
+            agent,
+            should_continue,
+            {"tools": "tools", "next": "next_agent", "error_handler": "error_handler"}
+        )
+        graph.add_edge("tools", agent)  # Loop back to retry
 
-    # Parallel frontend/backend after architect
-    graph.add_edge("architect", "frontend")
-    graph.add_edge("architect", "backend")
-    graph.add_edge(["frontend", "backend"], "security")
-
-    # Security → Tools loop or QA
-    graph.add_conditional_edges(
-        "security",
-        should_continue,
-        {"tools": "tools", "next": "qa", "error_handler": "error_handler"}
-    )
-    graph.add_edge("tools", "security")
-
-    # QA → Tools loop or DevOps
-    graph.add_conditional_edges(
-        "qa",
-        should_continue,
-        {"tools": "tools", "next": "devops", "error_handler": "error_handler"}
-    )
-    graph.add_edge("tools", "qa")
-
-    # End
+    # End after devops
     graph.add_edge("devops", END)
 
-    # Persistence
-    saver = RedisSaver.from_conn_string(settings.REDIS_URL)
+    # Persistence (async Redis)
+    saver = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
+
     return graph.compile(checkpointer=saver)
 
 
@@ -240,10 +223,9 @@ def run_agent_graph_task(
             )
             if not success:
                 await send_email_task(
-                    to="user_email",  # Resolve from DB
+                    to="user_email_placeholder",  # Resolve from DB
                     subject="Insufficient Credits",
-                    template_id=settings.SENDGRID_LOW_CREDITS_TEMPLATE_ID,
-                    dynamic_data={"remaining": 0}
+                    html=f"<p>You have insufficient credits ({msg}). Please top up.</p>",
                 )
                 raise ValueError(msg)
 
@@ -266,14 +248,15 @@ def run_agent_graph_task(
 
                 # Save results
                 project = await db.get(Project, project_id)
-                project.status = ProjectStatus.COMPLETED
-                project.code_repo_url = "git-generated-repo-url"  # In prod: upload to Git
-                project.deploy_url = "https://project.cursorcode.app"  # Mock or real
-                await db.commit()
+                if project:
+                    project.status = ProjectStatus.COMPLETED
+                    project.code_repo_url = "git-generated-repo-url"  # In prod: real upload
+                    project.deploy_url = "https://project.cursorcode.app"  # Real deploy
+                    await db.commit()
 
                 # Notify success
-                send_deployment_success_email(
-                    email="user_email",  # Resolve
+                await send_deployment_success_email(
+                    email="user_email_placeholder",  # Resolve
                     project_title=project.title or "New Project",
                     deploy_url=project.deploy_url,
                 )
@@ -300,16 +283,15 @@ def run_agent_graph_task(
                     reason="Orchestration failed",
                     db=db,
                 )
-                project = await db.get(Project, project_id)
-                project.status = ProjectStatus.FAILED
-                project.error_message = str(exc)
-                await db.commit()
+                if project:
+                    project.status = ProjectStatus.FAILED
+                    project.error_message = str(exc)
+                    await db.commit()
 
-                send_email_task.delay(
-                    to="user_email",
+                await send_email_task(
+                    to="user_email_placeholder",
                     subject="Project Build Failed",
-                    template_id=settings.SENDGRID_BUILD_FAILED_TEMPLATE_ID,
-                    dynamic_data={"project_id": project_id, "error": str(exc)}
+                    html=f"<p>Project {project_id} failed: {str(exc)}</p>",
                 )
 
                 raise self.retry(exc=exc)
