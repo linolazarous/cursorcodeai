@@ -3,6 +3,7 @@
 SQLAlchemy Plan Model - CursorCode AI
 Stores billing plan definitions with dynamic Stripe Product/Price IDs.
 Auto-created prices are cached here for idempotency and fast lookup.
+Uses mixins from db/models/mixins.py for reusable patterns.
 """
 
 from datetime import datetime
@@ -13,9 +14,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
+from app.db.models.mixins import UUIDMixin, SoftDeleteMixin, AuditMixin
+from app.db.models.utils import generate_unique_slug
 
 
-class Plan(Base, TimestampMixin):
+class Plan(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
     """
     Billing Plan Entity
     - Defines available subscription tiers (starter, pro, ultra, etc.)
@@ -23,21 +26,11 @@ class Plan(Base, TimestampMixin):
     - Used for dynamic checkout session creation
     - Supports future features like credit allowances, feature lists
     """
-
     __tablename__ = "plans"
     __table_args__ = (
         Index("ix_plans_name", "name", unique=True),
         Index("ix_plans_stripe_price_id", "stripe_price_id"),
-        Index("ix_plans_deleted_at", "deleted_at"),
         {'extend_existing': True},
-    )
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid4,
-        server_default=func.gen_random_uuid(),
-        index=True,
     )
 
     # Plan identifier (used in code, URLs, metadata)
@@ -104,12 +97,13 @@ class Plan(Base, TimestampMixin):
     #     Integer, nullable=True, comment="Max concurrent projects"
     # )
 
-    # Lifecycle
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
+    # Lifecycle (from SoftDeleteMixin)
+    # deleted_at already inherited
 
     def __repr__(self) -> str:
         price = f"${self.price_usd:.2f}" if self.price_usd_cents else "$0.00"
-        return f"<Plan(name={self.name}, display={self.display_name}, price={price}/{self.interval})>"
+        status = "active" if self.is_active else f"deleted:{self.deleted_at}"
+        return f"<Plan(name={self.name}, display={self.display_name}, price={price}/{self.interval}, status={status})>"
 
     @property
     def price_usd(self) -> float:
@@ -120,3 +114,8 @@ class Plan(Base, TimestampMixin):
     def is_free(self) -> bool:
         """Quick check if this is the free tier."""
         return self.price_usd_cents == 0
+
+    @classmethod
+    async def create_unique_slug(cls, display_name: str, db) -> str:
+        """Generate unique slug for this plan based on display name (future use)."""
+        return await generate_unique_slug(display_name, cls, db=db)
