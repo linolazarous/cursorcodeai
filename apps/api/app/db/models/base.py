@@ -1,21 +1,19 @@
 # apps/api/app/db/base.py
 """
-SQLAlchemy declarative base and common mixins for CursorCode AI.
-All models should inherit from Base (and optionally TimestampMixin).
+SQLAlchemy declarative base for CursorCode AI.
+All models inherit from this Base class.
 
-This file defines:
-- Abstract Base class (never mapped to a table)
-- TimestampMixin for automatic created_at / updated_at
-- No automatic table name generation (explicit __tablename__ is safer)
+This file is kept minimal:
+- Defines the abstract Base (never mapped to a table)
+- Provides safe __repr__ / __str__ helpers
+- TimestampMixin, UUIDMixin, SoftDeleteMixin, etc. are in db/models/mixins.py
+
+Do NOT add table-specific logic here — keep models clean and modular.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
-
-from sqlalchemy import func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
@@ -24,14 +22,20 @@ class Base(DeclarativeBase):
 
     Features:
     - __abstract__ = True → prevents Base from being mapped as a table
-    - Common place for global conventions (e.g. schema, future extensions)
-    - No automatic table name generation (define __tablename__ explicitly in models)
+    - Common place for global conventions (schema, future extensions)
+    - No automatic table name generation (define __tablename__ explicitly in each model)
+    - Safe __repr__ / __str__ helpers for debugging/logs
+
+    All concrete models should inherit from Base + mixins from db/models/mixins.py
     """
 
     __abstract__ = True
 
-    # Optional future extensions (uncomment when needed):
-    # __table_args__ = {"schema": "public"}  # if using schemas
+    # Optional global table args (uncomment when needed for all models)
+    # __table_args__ = {
+    #     "schema": "public",           # if using PostgreSQL schemas
+    #     "extend_existing": True,      # avoid duplicate table errors
+    # }
 
     def __repr__(self) -> str:
         """Safe, readable representation (avoids loading large relationships)."""
@@ -45,34 +49,3 @@ class Base(DeclarativeBase):
     def __str__(self) -> str:
         """Human-readable string (useful in logs)."""
         return self.__repr__()
-
-
-# ────────────────────────────────────────────────
-# Timestamp Mixin (recommended for most models)
-# ────────────────────────────────────────────────
-class TimestampMixin:
-    """
-    Mixin that adds automatic created_at / updated_at timestamps.
-
-    Usage:
-        class User(Base, TimestampMixin):
-            ...
-
-    Benefits:
-    - Server-side defaults and updates (no Python-side code needed)
-    - Indexed updated_at (fast for "recently modified" queries)
-    """
-
-    created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
-        nullable=False,
-        comment="When the record was created (UTC)"
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-        index=True,  # ← Very useful for sorting / filtering recent changes
-        comment="When the record was last updated (UTC)"
-    )
