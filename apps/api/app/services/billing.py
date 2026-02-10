@@ -3,7 +3,7 @@
 Billing Service - CursorCode AI
 Handles credit metering, Stripe integration, plan changes, and usage reporting.
 Production-ready (2026): atomic transactions, idempotency, retries, audit trail.
-Automatic Stripe Product + Price creation (no manual price IDs).
+Uses dynamic Stripe Product + Price from 'plans' table (no manual IDs).
 """
 
 import logging
@@ -13,12 +13,10 @@ from typing import Dict, Any, Optional, Tuple
 import stripe
 from sqlalchemy import select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 
 from app.core.config import settings
-from app.db.session import get_db
-from app.models.user import User
-from app.models.plan import Plan  # New model for plans/prices
+from app.db.models import Plan, User
 from app.services.logging import audit_log
 from app.tasks.email import send_email_task
 
@@ -26,20 +24,9 @@ logger = logging.getLogger(__name__)
 
 stripe.api_key = settings.STRIPE_SECRET_KEY.get_secret_value()
 
-# ────────────────────────────────────────────────
-# Plan Configuration (defined in code – no dashboard manual work)
-# Amount in cents (USD), interval: 'month' or 'year'
-# ────────────────────────────────────────────────
-PLAN_CONFIG = {
-    "starter": {"amount": 0, "interval": "month", "display_name": "Starter"},          # Free tier
-    "standard": {"amount": 999, "interval": "month", "display_name": "Standard"},     # $9.99/mo
-    "pro": {"amount": 2999, "interval": "month", "display_name": "Pro"},              # $29.99/mo
-    "premier": {"amount": 9999, "interval": "month", "display_name": "Premier"},      # $99.99/mo
-    "ultra": {"amount": 49999, "interval": "month", "display_name": "Ultra"},         # $499.99/mo
-}
 
 # ────────────────────────────────────────────────
-# Auto-create Stripe Product + Price
+# Plan Management (uses DB 'plans' table)
 # ────────────────────────────────────────────────
 async def get_or_create_stripe_price(
     plan_name: str,
@@ -49,21 +36,14 @@ async def get_or_create_stripe_price(
     Get existing Stripe Price ID or create new Product + Price for the plan.
     Stores price ID in Supabase 'plans' table for future use.
     """
-    if plan_name not in PLAN_CONFIG:
+    plan = await db.scalar(select(Plan).where(Plan.name == plan_name))
+    if not plan:
         raise ValueError(f"Unknown plan: {plan_name}")
 
-    config = PLAN_CONFIG[plan_name]
-    amount_cents = config["amount"]
-    interval = config["interval"]
-    display_name = config["display_name"]
-
-    # Check if price already exists in DB
-    plan = await db.scalar(select(Plan).where(Plan.name == plan_name))
-    if plan and plan.stripe_price_id:
-        # Verify it still exists in Stripe (optional but safe)
+    if plan.stripe_price_id:
         try:
             price = stripe.Price.retrieve(plan.stripe_price_id)
-            if price.unit_amount == amount_cents:
+            if price.unit_amount == plan.price_usd_cents:
                 return plan.stripe_price_id
         except stripe.error.InvalidRequestError:
             logger.warning(f"Stored price ID invalid for {plan_name} – recreating")
@@ -71,35 +51,25 @@ async def get_or_create_stripe_price(
     try:
         # Create Product
         product = stripe.Product.create(
-            name=f"CursorCode {display_name} Plan",
-            description=f"{display_name} plan with AI credits and priority support",
+            name=f"CursorCode {plan.display_name} Plan",
+            description=f"{plan.display_name} plan with AI credits and priority support",
             metadata={"plan_name": plan_name},
+            idempotency_key=f"product_{plan_name}_{uuid.uuid4()}",
         )
 
         # Create recurring Price
         price = stripe.Price.create(
             product=product.id,
-            unit_amount=amount_cents,
+            unit_amount=plan.price_usd_cents,
             currency="usd",
-            recurring={"interval": interval},
+            recurring={"interval": plan.interval},
             metadata={"plan_name": plan_name},
+            idempotency_key=f"price_{plan_name}_{uuid.uuid4()}",
         )
 
-        # Store in Supabase plans table
-        if not plan:
-            plan = Plan(
-                name=plan_name,
-                display_name=display_name,
-                price_usd=amount_cents,
-                interval=interval,
-                stripe_product_id=product.id,
-                stripe_price_id=price.id,
-            )
-            db.add(plan)
-        else:
-            plan.stripe_product_id = product.id
-            plan.stripe_price_id = price.id
-
+        # Update DB
+        plan.stripe_product_id = product.id
+        plan.stripe_price_id = price.id
         await db.commit()
         await db.refresh(plan)
 
@@ -108,11 +78,11 @@ async def get_or_create_stripe_price(
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe price creation failed for {plan_name}: {e}")
-        raise HTTPException(500, "Failed to create billing plan")
+        raise RuntimeError(f"Failed to create billing plan: {str(e.user_message or e)}")
 
 
 # ────────────────────────────────────────────────
-# Credit Operations (atomic)
+# Credit Operations (atomic & safe)
 # ────────────────────────────────────────────────
 async def deduct_credits(
     user_id: str,
@@ -122,9 +92,12 @@ async def deduct_credits(
     idempotency_key: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
-    Atomically deduct credits.
+    Atomically deduct credits if sufficient balance exists.
     Returns (success, message)
     """
+    if amount <= 0:
+        return False, "Amount must be positive"
+
     try:
         stmt = (
             update(User)
@@ -139,7 +112,6 @@ async def deduct_credits(
             return False, "Insufficient credits or user not found"
 
         new_credits, plan = row
-
         await db.commit()
 
         audit_log.delay(
@@ -154,16 +126,20 @@ async def deduct_credits(
             },
         )
 
-        # Low credits alert
+        # Low credits alert (email)
         if new_credits <= 5:
             send_email_task.delay(
-                to="user_email_from_db",  # Resolve via user query if needed
+                to="user_email_placeholder",  # Resolve via user query if needed
                 subject="Low Credits Alert - CursorCode AI",
-                template_id=settings.SENDGRID_LOW_CREDITS_TEMPLATE_ID,
-                dynamic_data={"remaining": new_credits, "plan_url": f"{settings.FRONTEND_URL}/billing"}
+                html=f"""
+                <h2>Low Credits Warning</h2>
+                <p>Your credit balance is now {new_credits}.</p>
+                <p>Top up soon to continue using AI features!</p>
+                <p><a href="{settings.FRONTEND_URL}/billing">Add Credits</a></p>
+                """
             )
 
-        return True, f"Deducted {amount} credits. Balance: {new_credits}"
+        return True, f"Deducted {amount} credits. New balance: {new_credits}"
 
     except IntegrityError:
         await db.rollback()
@@ -182,8 +158,11 @@ async def refund_credits(
     idempotency_key: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
-    Refund credits (e.g., on failed build)
+    Refund credits (e.g., on failed build).
     """
+    if amount <= 0:
+        return False, "Amount must be positive"
+
     try:
         stmt = (
             update(User)
@@ -203,7 +182,12 @@ async def refund_credits(
         audit_log.delay(
             user_id=user_id,
             action="credits_refunded",
-            metadata={"amount": amount, "reason": reason, "new_balance": new_credits}
+            metadata={
+                "amount": amount,
+                "reason": reason,
+                "new_balance": new_credits,
+                "idempotency_key": idempotency_key,
+            },
         )
 
         return True, f"Refunded {amount} credits. New balance: {new_credits}"
@@ -215,7 +199,7 @@ async def refund_credits(
 
 
 # ────────────────────────────────────────────────
-# Stripe Helpers
+# Stripe Customer Management
 # ────────────────────────────────────────────────
 async def create_or_get_stripe_customer(
     user: User,
@@ -230,26 +214,30 @@ async def create_or_get_stripe_customer(
             if customer.email == user.email:
                 return user.stripe_customer_id
         except stripe.error.InvalidRequestError:
-            pass  # Customer deleted or invalid → recreate
+            logger.warning(f"Stored customer ID invalid for user {user.id} – recreating")
 
     customer = stripe.Customer.create(
         email=user.email,
         name=user.email.split("@")[0],
         metadata={"user_id": str(user.id)},
+        idempotency_key=f"customer_{user.id}_{uuid.uuid4()}",
     )
 
     user.stripe_customer_id = customer.id
     await db.commit()
 
     audit_log.delay(
-        user.id,
-        "stripe_customer_created",
-        {"customer_id": customer.id}
+        user_id=str(user.id),
+        action="stripe_customer_created",
+        metadata={"customer_id": customer.id}
     )
 
     return customer.id
 
 
+# ────────────────────────────────────────────────
+# Create Checkout Session (subscribe / upgrade)
+# ────────────────────────────────────────────────
 async def create_checkout_session(
     user: User,
     plan: str,
@@ -258,12 +246,12 @@ async def create_checkout_session(
     db: AsyncSession,
 ) -> Dict[str, Any]:
     """
-    Create Stripe Checkout Session for subscription using auto-created price.
+    Create Stripe Checkout Session for subscription using dynamic price.
     """
     customer_id = await create_or_get_stripe_customer(user, db)
-
-    # Dynamically get/create price for the plan
     price_id = await get_or_create_stripe_price(plan_name=plan, db=db)
+
+    idempotency_key = f"checkout_{user.id}_{plan}_{uuid.uuid4()}"
 
     session = stripe.checkout.Session.create(
         customer=customer_id,
@@ -277,12 +265,17 @@ async def create_checkout_session(
             "plan": plan,
             "org_id": str(user.org_id),
         },
+        idempotency_key=idempotency_key,
     )
 
     audit_log.delay(
-        user.id,
-        "checkout_session_created",
-        {"session_id": session.id, "plan": plan}
+        user_id=str(user.id),
+        action="checkout_session_created",
+        metadata={
+            "session_id": session.id,
+            "plan": plan,
+            "customer_id": customer_id,
+        }
     )
 
     return {
@@ -291,6 +284,9 @@ async def create_checkout_session(
     }
 
 
+# ────────────────────────────────────────────────
+# Report Grok Usage to Stripe (metered billing)
+# ────────────────────────────────────────────────
 async def report_usage(
     user_id: str,
     tokens: int,
@@ -298,28 +294,34 @@ async def report_usage(
     db: AsyncSession,
 ):
     """
-    Report Grok usage to Stripe metered billing.
+    Report Grok token usage to Stripe metered billing.
     """
     user = await db.get(User, user_id)
     if not user or not user.stripe_subscription_id:
         logger.warning(f"No subscription for usage report: user={user_id}")
         return
 
-    stripe.billing.meter_events.create(
-        event_name="grok_tokens_used",
-        value=tokens,
-        identifier=f"{user_id}_{datetime.now().isoformat()}",
-        customer=user.stripe_customer_id,
-        event_timestamp=int(datetime.now(timezone.utc).timestamp()),
-        metadata={
-            "model": model,
-            "user_id": user_id,
-            "subscription_id": user.stripe_subscription_id,
-        }
-    )
-
-    audit_log.delay(
-        user_id,
-        "usage_reported",
-        {"tokens": tokens, "model": model}
+    try:
+        stripe.billing.meter_events.create(
+            event_name="grok_tokens_used",
+            value=tokens,
+            identifier=f"{user_id}_{datetime.now(timezone.utc).timestamp()}",
+            customer=user.stripe_customer_id,
+            event_timestamp=int(datetime.now(timezone.utc).timestamp()),
+            metadata={
+                "model": model,
+                "user_id": user_id,
+                "subscription_id": user.stripe_subscription_id,
+            },
         )
+
+        audit_log.delay(
+            user_id=user_id,
+            action="usage_reported",
+            metadata={"tokens": tokens, "model": model}
+        )
+
+    except StripeError as e:
+        logger.error(f"Stripe usage report failed for user {user_id}: {e}")
+    except Exception as e:
+        logger.exception(f"Usage reporting failed for user {user_id}")
