@@ -6,8 +6,8 @@ Production hardened (2026): secure cookies, token rotation, org scoping, audit.
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Annotated, Optional, Dict
+from datetime import datetime, timezone, timedelta
+from typing import Annotated, Optional
 
 import jwt
 from fastapi import (
@@ -19,13 +19,11 @@ from fastapi import (
 )
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
 from app.services.logging import audit_log
-from app.tasks.email import send_email_task
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +43,23 @@ class AuthUser(BaseModel):
 
 async def get_current_user(
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db = Depends(get_db),
     credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)] = None,
 ) -> AuthUser:
     """
     Dependency: Extracts and validates current user from JWT (cookie or Bearer).
-    Injects org context and RBAC checks.
+    Enforces org context and returns enriched user object from DB.
     """
-    # 1. Try cookie first (preferred for browser), then Bearer (API clients)
+    # 1. Prefer cookie (browser), fallback to Bearer (API clients)
     token = request.cookies.get("access_token")
     if not token and credentials:
         token = credentials.credentials
 
     if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
 
     # 2. Decode & validate JWT
     try:
@@ -66,7 +67,11 @@ async def get_current_user(
             token,
             settings.JWT_SECRET_KEY,
             algorithms=["HS256"],
-            options={"require": ["exp", "sub", "type"], "verify_exp": True},
+            options={
+                "require": ["exp", "sub", "type"],
+                "verify_exp": True,
+                "verify_signature": True,
+            },
         )
 
         if payload.get("type") != "access":
@@ -80,60 +85,67 @@ async def get_current_user(
         credits = payload.get("credits", 0)
 
         if not user_id or not org_id:
-            raise jwt.InvalidTokenError("Missing required claims")
+            raise jwt.InvalidTokenError("Missing required claims: sub/org_id")
 
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except (jwt.InvalidTokenError, jwt.DecodeError) as e:
-        logger.warning(f"Invalid JWT: {e}")
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
+        logger.warning(f"Invalid JWT: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    # 3. Fetch user from DB (for up-to-date status, credits, etc.)
+    # 3. Fetch fresh user from DB (for credits, status, roles, etc.)
     user = await db.get(User, user_id)
     if not user or user.deleted_at:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found or deactivated")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account not found or deactivated")
 
     if not user.is_verified:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Email not verified")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email not verified")
 
-    # 4. Org context validation
-    if user.org_id != org_id:
+    # 4. Enforce org context consistency
+    if str(user.org_id) != org_id:
         logger.warning(f"JWT org mismatch: JWT={org_id}, DB={user.org_id}")
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid organization context")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid organization context")
 
-    # 5. Build context object
+    # 5. Build enriched context
     auth_user = AuthUser(
         id=str(user.id),
         email=user.email,
-        roles=roles,
+        roles=user.roles,
         org_id=str(user.org_id),
         plan=user.plan,
         credits=user.credits,
         is_active=user.is_active,
     )
 
-    # 6. Sentry context + audit
-    sentry_sdk.set_user({"id": auth_user.id, "email": auth_user.email})
-    sentry_sdk.set_tag("org_id", auth_user.org_id)
-
-    # Optional: audit on every auth (high volume → sample)
-    if settings.AUDIT_ALL_AUTH:
-        audit_log.delay(user.id, "auth_access", {"path": request.url.path})
+    # 6. Audit (sampled – high volume endpoint)
+    if settings.AUDIT_ALL_AUTH or secrets.randbelow(10) == 0:  # \~10% sampling
+        audit_log.delay(
+            user_id=auth_user.id,
+            action="auth_access",
+            metadata={
+                "path": request.url.path,
+                "method": request.method,
+                "ip": request.client.host,
+            }
+        )
 
     return auth_user
 
 
+# ────────────────────────────────────────────────
+# RBAC Dependencies
+# ────────────────────────────────────────────────
 async def require_role(
     required_role: str,
     user: Annotated[AuthUser, Depends(get_current_user)]
 ) -> AuthUser:
     """
-    RBAC dependency: enforce role (e.g. "admin", "org_owner")
+    Enforce specific role (e.g. 'admin', 'org_owner').
     """
     if required_role not in user.roles:
         raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            f"Insufficient permissions. Required role: {required_role}"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient permissions. Required role: {required_role}"
         )
     return user
 
@@ -151,11 +163,12 @@ async def require_admin(
 
 
 # ────────────────────────────────────────────────
-# Optional: Token Refresh in middleware (if expired access token)
+# Optional: Auto-refresh expired access token
 # ────────────────────────────────────────────────
 async def refresh_if_needed(request: Request, response: Response):
     """
-    Middleware helper: auto-refresh access token if expired (optional usage)
+    Middleware helper: auto-refresh access token if expired using refresh token.
+    Call from main middleware or per-route if needed.
     """
     access_token = request.cookies.get("access_token")
     if not access_token:
@@ -163,22 +176,26 @@ async def refresh_if_needed(request: Request, response: Response):
 
     try:
         jwt.decode(access_token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+        return  # Token still valid
     except jwt.ExpiredSignatureError:
-        refresh_token = request.cookies.get("refresh_token")
-        if not refresh_token:
-            return
+        pass  # Proceed to refresh
+    except Exception:
+        return  # Invalid → let route fail naturally
 
-        try:
-            payload = jwt.decode(refresh_token, settings.JWT_REFRESH_SECRET, algorithms=["HS256"])
-            user_id = payload["sub"]
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        return
 
-            new_access = create_access_token({"sub": user_id, "type": "access"})
-            new_refresh = create_refresh_token({"sub": user_id})
+    try:
+        payload = jwt.decode(refresh_token, settings.JWT_REFRESH_SECRET, algorithms=["HS256"])
+        user_id = payload["sub"]
 
-            response.set_cookie("access_token", new_access, **settings.COOKIE_DEFAULTS)
-            response.set_cookie("refresh_token", new_refresh, **settings.COOKIE_DEFAULTS)
+        new_access = create_access_token({"sub": user_id, "type": "access"})
+        new_refresh = create_refresh_token({"sub": user_id})
 
-            logger.info(f"Auto-refreshed token for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Auto-refresh failed: {e}")
-           
+        response.set_cookie("access_token", new_access, **settings.COOKIE_DEFAULTS)
+        response.set_cookie("refresh_token", new_refresh, **settings.COOKIE_DEFAULTS)
+
+        logger.info(f"Auto-refreshed token for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Auto-refresh failed: {str(e)}")
