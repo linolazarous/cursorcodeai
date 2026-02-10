@@ -1,90 +1,121 @@
-# apps/api/app/db/plan.py
+# apps/api/app/db/models/plan.py
 """
-SQLAlchemy model for subscription plans.
-Defines available plans (starter, pro, ultra, etc.) with pricing and Stripe linkage.
+SQLAlchemy Plan Model - CursorCode AI
+Stores billing plan definitions with dynamic Stripe Product/Price IDs.
+Auto-created prices are cached here for idempotency and fast lookup.
+Uses mixins from db/models/mixins.py for reusable patterns.
 """
 
-from __future__ import annotations
+from datetime import datetime
+from typing import Optional
 
-from enum import Enum as PyEnum
+from sqlalchemy import Boolean, Index, Integer, String, func
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
-from sqlalchemy import String, Integer, Boolean, Enum
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from .base import Base
-
-
-class BillingInterval(str, PyEnum):
-    """Allowed billing intervals."""
-    MONTH = "month"
-    YEAR = "year"
+from app.db.base import Base, TimestampMixin
+from app.db.models.mixins import UUIDMixin, SoftDeleteMixin, AuditMixin
+from app.db.models.utils import generate_unique_slug
 
 
-class Plan(Base):
+class Plan(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
     """
-    Subscription plan definition.
-
-    Each row represents one purchasable plan tier.
-    Linked to Stripe Product & Price objects for checkout and webhooks.
+    Billing Plan Entity
+    - Defines available subscription tiers (starter, pro, ultra, etc.)
+    - Stores auto-generated Stripe Product & Price IDs
+    - Used for dynamic checkout session creation
+    - Supports future features like credit allowances, feature lists
     """
-
     __tablename__ = "plans"
+    __table_args__ = (
+        Index("ix_plans_name", "name", unique=True),
+        Index("ix_plans_stripe_price_id", "stripe_price_id"),
+        {'extend_existing': True},
+    )
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    # Plan identifier (used in code, URLs, metadata)
     name: Mapped[str] = mapped_column(
         String(50),
         unique=True,
         nullable=False,
         index=True,
-        comment="Internal unique identifier (starter, pro, ultra, ...)",
+        comment="Internal unique key (e.g. 'starter', 'pro', 'ultra')"
     )
+
+    # Display name for UI/emails
     display_name: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
-        comment="User-facing name (e.g. 'Pro Plan', 'Ultra')",
+        comment="Human-readable name (e.g. 'Starter Plan', 'Pro Plan')"
     )
+
+    # Pricing (in USD cents)
     price_usd_cents: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        comment="Price in USD cents (e.g. 1999 = $19.99)",
+        comment="Price in USD cents (e.g. 999 = $9.99)"
     )
-    interval: Mapped[BillingInterval] = mapped_column(
-        Enum(BillingInterval),
-        default=BillingInterval.MONTH,
+
+    # Billing cycle
+    interval: Mapped[str] = mapped_column(
+        String(20),
+        default="month",
         nullable=False,
-        comment="Billing cycle: month or year",
+        comment="'month' or 'year'"
     )
-    stripe_product_id: Mapped[str | None] = mapped_column(
+
+    # Stripe integration
+    stripe_product_id: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
         unique=True,
-        index=True,
-        comment="Stripe Product ID (created via dashboard or API)",
+        comment="Stripe Product ID"
     )
-    stripe_price_id: Mapped[str | None] = mapped_column(
+    stripe_price_id: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
         unique=True,
-        index=True,
-        comment="Stripe recurring Price ID for this plan",
+        comment="Stripe recurring Price ID"
     )
+
+    # Plan status & visibility
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
         nullable=False,
-        comment="Whether this plan is currently offered",
+        comment="Whether this plan is available for new signups"
     )
 
-    # Future extension fields (uncomment when needed)
-    # credits_monthly: Mapped[int] = mapped_column(Integer, default=0)
-    # features: Mapped[list[str]] = mapped_column(JSON, default_factory=list)
-    # max_projects: Mapped[int] = mapped_column(Integer, default=999)
+    # Optional future fields (uncomment when implemented)
+    # monthly_credits: Mapped[Optional[int]] = mapped_column(
+    #     Integer, nullable=True, comment="Monthly credits included"
+    # )
+    # features: Mapped[Optional[List[str]]] = mapped_column(
+    #     JSON, nullable=True, comment="Feature list (e.g. ['priority support', 'custom domain'])"
+    # )
+    # max_projects: Mapped[Optional[int]] = mapped_column(
+    #     Integer, nullable=True, comment="Max concurrent projects"
+    # )
 
-    # Relationships (if needed later)
-    # users = relationship("User", back_populates="plan")
+    # Lifecycle (inherited from SoftDeleteMixin)
+    # deleted_at already present
 
     def __repr__(self) -> str:
-        return (
-            f"<Plan id={self.id} name={self.name!r} "
-            f"price=${self.price_usd_cents/100:.2f}/{self.interval}>"
-        )
+        price = f"${self.price_usd:.2f}" if self.price_usd_cents else "$0.00"
+        status = "active" if self.is_active else f"deleted:{self.deleted_at}"
+        return f"<Plan(name={self.name}, display={self.display_name}, price={price}/{self.interval}, status={status})>"
+
+    @property
+    def price_usd(self) -> float:
+        """Human-readable price in USD (float)."""
+        return self.price_usd_cents / 100.0 if self.price_usd_cents is not None else 0.0
+
+    @property
+    def is_free(self) -> bool:
+        """Quick check if this is the free tier."""
+        return self.price_usd_cents == 0
+
+    @classmethod
+    async def create_unique_slug(cls, display_name: str, db) -> str:
+        """Generate unique slug for this plan based on display name (future use)."""
+        return await generate_unique_slug(display_name, cls, db=db)
