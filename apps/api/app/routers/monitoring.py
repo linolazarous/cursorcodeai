@@ -2,16 +2,26 @@
 """
 Monitoring Router - CursorCode AI
 Endpoints for logging and observability.
-- Receives frontend errors from Next.js
+- Receives frontend errors from Next.js (JavaScript/runtime errors)
+- Stores in Supabase 'app_errors' table (consistent with backend exceptions)
 - Exposes Prometheus metrics (handled in main.py)
-Production-ready (February 2026): structured logging, Supabase error storage, no external vendors.
+Production-ready (February 2026): structured logging, rate limiting, audit trail.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Annotated
 
-from fastapi import APIRouter, Request, status, Depends
+from fastapi import (
+    APIRouter,
+    Request,
+    Depends,
+    HTTPException,
+    status,
+)
+from pydantic import BaseModel, Field
 from sqlalchemy import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -22,37 +32,67 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
 
+# Rate limiter: per authenticated user when possible, fallback to IP
+def monitoring_limiter_key(request: Request) -> str:
+    user = getattr(request.state, "user", None)
+    if user and hasattr(user, "id"):
+        return str(user.id)
+    return request.client.host
 
+limiter = Limiter(key_func=monitoring_limiter_key)
+
+
+# ────────────────────────────────────────────────
+# Incoming payload validation
+# ────────────────────────────────────────────────
+class FrontendErrorPayload(BaseModel):
+    message: str = Field(..., min_length=1, description="Error message")
+    stack: Optional[str] = Field(None, description="Stack trace")
+    url: Optional[str] = Field(None, description="Page URL where error occurred")
+    component: Optional[str] = Field(None, description="React/Vue/Svelte component name")
+    userAgent: Optional[str] = Field(None, description="Browser user agent")
+    source: Optional[str] = Field(None, description="Error source file/line")
+    timestamp: Optional[str] = Field(None, description="Client-side timestamp")
+
+
+# ────────────────────────────────────────────────
+# Log Frontend Error (called from Next.js)
+# ────────────────────────────────────────────────
 @router.post("/log-error", status_code=status.HTTP_200_OK)
+@limiter.limit("20/minute")  # Reasonable for frontend error bursts
 async def log_frontend_error(
-    data: Dict[str, Any],
+    payload: FrontendErrorPayload,
     request: Request,
     current_user: Annotated[Optional[AuthUser], Depends(get_current_user)] = None,
-    db = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Receives frontend JavaScript/runtime errors from Next.js.
     - Logs structured error with context
-    - Stores in Supabase 'app_errors' table (same as backend exceptions)
+    - Stores in Supabase 'app_errors' table
     - Audits the event
+    - Returns 200 even on DB failure (frontend should not retry)
     """
-    message = data.get("message", "Unknown frontend error")
-    url = data.get("url")
-    component = data.get("component")
-    stack = data.get("stack")
-    user_agent = data.get("userAgent")
+    message = payload.message
+    url = payload.url
+    component = payload.component
+    stack = payload.stack
+    user_agent = payload.userAgent
+    source = payload.source
 
     user_id = current_user.id if current_user else None
     ip = request.client.host
 
-    # Structured logging (matches main.py style)
+    # Structured logging (structlog-friendly)
     logger.error(
-        f"Frontend error: {message}",
+        "Frontend error received",
         extra={
+            "message": message,
             "url": url,
             "component": component,
-            "stack": stack,
+            "stack": stack[:1000] if stack else None,  # truncate long stacks
             "user_agent": user_agent,
+            "source": source,
             "user_id": user_id,
             "ip": ip,
             "environment": settings.ENVIRONMENT,
@@ -61,7 +101,7 @@ async def log_frontend_error(
         }
     )
 
-    # Store in Supabase 'app_errors' table (consistent with main.py exception handler)
+    # Store in Supabase 'app_errors' table
     try:
         await db.execute(
             insert("app_errors").values(
@@ -69,32 +109,51 @@ async def log_frontend_error(
                 message=message,
                 stack=stack,
                 user_id=user_id,
-                request_path=url or request.url.path,
-                request_method="GET",  # Frontend errors are usually client-side GET/POST
+                request_path=url or str(request.url),
+                request_method="CLIENT_SIDE",
                 environment=settings.ENVIRONMENT,
                 extra={
                     "component": component,
                     "user_agent": user_agent,
+                    "source": source,
                     "ip": ip,
-                    "payload": data,
+                    "payload": payload.dict(exclude_unset=True),
+                    "timestamp": datetime.now(ZoneInfo("UTC")).isoformat(),
                 },
             )
         )
         await db.commit()
     except Exception as db_exc:
-        logger.error(f"Failed to store frontend error in Supabase: {db_exc}")
+        logger.error(f"Failed to store frontend error in DB: {db_exc}")
 
-    # Audit log (matches main.py style)
+    # Audit log
     audit_log.delay(
         user_id=user_id,
         action="frontend_error_logged",
         metadata={
-            "message": message,
+            "message": message[:200],  # truncate for audit
             "url": url,
             "component": component,
             "user_agent": user_agent,
             "ip": ip,
-        }
+            "stack_length": len(stack) if stack else 0,
+        },
+        request=request,
     )
 
     return {"status": "logged"}
+
+
+# ────────────────────────────────────────────────
+# Health check (public, no auth)
+# ────────────────────────────────────────────────
+@router.get("/health")
+async def monitoring_health():
+    """
+    Public health check for monitoring tools (Prometheus, UptimeRobot, etc.).
+    """
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(ZoneInfo("UTC")).isoformat(),
+        "service": "monitoring-router",
+    }
