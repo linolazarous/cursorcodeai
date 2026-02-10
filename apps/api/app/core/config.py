@@ -38,9 +38,13 @@ class Settings(BaseSettings):
     # ────────────────────────────────────────────────
     # Core App
     # ────────────────────────────────────────────────
-    ENVIRONMENT: str = Field(..., pattern="^(development|staging|production)$")
+    ENVIRONMENT: str = Field(
+        ...,
+        pattern="^(development|staging|production)$",
+        description="Runtime environment"
+    )
     APP_VERSION: str = "1.0.0"
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = Field("INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
 
     # ────────────────────────────────────────────────
     # URLs & Domains
@@ -50,13 +54,12 @@ class Settings(BaseSettings):
         description="Base URL of the frontend (used in emails, links, CORS, redirects)"
     )
 
-    # Computed backend API URL (used internally & in emails)
     @property
     def API_URL(self) -> AnyHttpUrl:
-        """Computed API base URL (derived from FRONTEND_URL or fallback)."""
-        return AnyHttpUrl(f"{self.FRONTEND_URL}/api")
+        """Computed API base URL (derived from FRONTEND_URL)."""
+        return AnyHttpUrl(f"{self.FRONTEND_URL.rstrip('/')}/api")
 
-    # Optional – only if needed for legacy frontend links (rare in backend)
+    # Optional – only if needed for legacy frontend links
     NEXT_PUBLIC_APP_URL: Optional[AnyHttpUrl] = Field(
         default=None,
         description="Frontend base URL (frontend-only; optional in backend)"
@@ -71,11 +74,11 @@ class Settings(BaseSettings):
     )
 
     # ────────────────────────────────────────────────
-    # Redis (Upstash recommended)
+    # Redis (Upstash or self-hosted)
     # ────────────────────────────────────────────────
     REDIS_URL: RedisDsn = Field(
         ...,
-        description="Upstash or Redis connection string"
+        description="Redis connection string (used for caching, rate limiting, sessions)"
     )
 
     # ────────────────────────────────────────────────
@@ -86,7 +89,7 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: SecretStr
 
     # ────────────────────────────────────────────────
-    # Resend Email (replaced SendGrid)
+    # Resend Email
     # ────────────────────────────────────────────────
     RESEND_API_KEY: SecretStr = Field(
         ...,
@@ -101,47 +104,47 @@ class Settings(BaseSettings):
     # xAI / Grok API
     # ────────────────────────────────────────────────
     XAI_API_KEY: SecretStr
-    DEFAULT_XAI_MODEL: str = "grok-4-latest"
-    FAST_REASONING_MODEL: str = "grok-4-1-fast-reasoning"
-    FAST_NON_REASONING_MODEL: str = "grok-4-1-fast-non-reasoning"
+    DEFAULT_XAI_MODEL: str = Field("grok-beta", description="Default Grok model")
+    FAST_REASONING_MODEL: str = Field("grok-beta-fast", description="Fast reasoning model")
+    FAST_NON_REASONING_MODEL: str = Field("grok-beta-fast", description="Fast non-reasoning model")
 
     # ────────────────────────────────────────────────
     # JWT & Security
     # ────────────────────────────────────────────────
     JWT_SECRET_KEY: SecretStr
     JWT_REFRESH_SECRET: SecretStr
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(15, ge=1, le=1440)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(30, ge=1, le=90)
 
-    COOKIE_SECURE: bool = True  # Set False in dev
+    COOKIE_SECURE: bool = Field(True, description="Set to False in development")
     COOKIE_DEFAULTS: Dict[str, Any] = Field(default_factory=lambda: {
         "httponly": True,
-        "secure": True,  # overridden by COOKIE_SECURE
+        "secure": True,  # overridden by COOKIE_SECURE in production
         "samesite": "strict",
         "path": "/",
     })
 
     # ────────────────────────────────────────────────
-    # CORS (frontend origins)
+    # CORS
     # ────────────────────────────────────────────────
     CORS_ORIGINS: List[AnyHttpUrl] = Field(default_factory=list)
 
     @model_validator(mode='after')
     def compute_cors_origins(self) -> 'Settings':
-        """Automatically populate CORS_ORIGINS from FRONTEND_URL if empty."""
+        """Auto-populate CORS_ORIGINS from FRONTEND_URL if empty."""
         if not self.CORS_ORIGINS:
             self.CORS_ORIGINS = [self.FRONTEND_URL]
         return self
 
     # ────────────────────────────────────────────────
-    # Computed / Helpers
+    # Validation & Computed Properties
     # ────────────────────────────────────────────────
     @field_validator("ENVIRONMENT", mode="before")
     @classmethod
     def validate_env(cls, v: str) -> str:
-        v = v.lower()
+        v = v.lower().strip()
         if v not in ["development", "staging", "production"]:
-            raise ValueError("Invalid ENVIRONMENT")
+            raise ValueError("Invalid ENVIRONMENT value")
         return v
 
     @property
@@ -152,18 +155,21 @@ class Settings(BaseSettings):
     def is_dev(self) -> bool:
         return self.ENVIRONMENT == "development"
 
-    def get_cookie_options(self, max_age: int) -> Dict[str, Any]:
+    def get_cookie_options(self, max_age: int = None) -> Dict[str, Any]:
+        """Get secure cookie options, adjusted for environment."""
         opts = self.COOKIE_DEFAULTS.copy()
-        opts["max_age"] = max_age
-        opts["secure"] = self.COOKIE_SECURE
+        opts["secure"] = self.COOKIE_SECURE and self.is_production
+        if max_age is not None:
+            opts["max_age"] = max_age
         return opts
 
 
 # ────────────────────────────────────────────────
 # Singleton instance (cached)
 # ────────────────────────────────────────────────
-@lru_cache()
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
 
 settings = get_settings()
