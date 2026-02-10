@@ -11,17 +11,15 @@ import time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import insert
 
 from app.core.config import settings
-from app.db.session import lifespan  # ← From session.py (init_db + dispose)
-from app.db.models import User, Org, Project, Plan, AuditLog  # ← New model imports
+from app.db.session import lifespan  # Handles DB startup check + shutdown
+from app.db.models import User, Org, Project, Plan, AuditLog  # ← Correct model imports
 from app.routers import (
     auth,
     orgs,
@@ -31,7 +29,7 @@ from app.routers import (
     admin,
     monitoring,
 )
-from app.middleware.auth import get_current_user  # Used selectively via Depends
+from app.middleware.auth import get_current_user  # Selective via Depends
 from app.middleware.logging import log_requests_middleware
 from app.middleware.security import add_security_headers
 from app.middleware.rate_limit import (
@@ -62,7 +60,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url=None,
-    lifespan=lifespan,  # ← Handles startup DB check + shutdown dispose
+    lifespan=lifespan,  # DB connection check on startup + cleanup on shutdown
     debug=settings.ENVIRONMENT == "development",
     openapi_tags=[
         {"name": "Authentication", "description": "User auth & sessions"},
@@ -123,7 +121,7 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # Custom auth middleware — applied selectively via Depends (not global)
 
 # ────────────────────────────────────────────────
-# Routers (all prefixed and tagged)
+# Routers
 # ────────────────────────────────────────────────
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(orgs.router, prefix="/orgs", tags=["Organizations"])
@@ -134,7 +132,7 @@ app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])
 
 # ────────────────────────────────────────────────
-# Prometheus Metrics Endpoint (for monitoring)
+# Prometheus Metrics Endpoint
 # ────────────────────────────────────────────────
 @app.get("/metrics", include_in_schema=False)
 async def metrics():
