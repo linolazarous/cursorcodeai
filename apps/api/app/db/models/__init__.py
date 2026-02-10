@@ -7,10 +7,14 @@ Purpose:
 - Prevents circular import issues
 - Makes model usage consistent and IDE-friendly
 
-Recommended usage:
+Recommended usage (preferred style):
     from app.db.models import User, Project, Base, ProjectStatus, Org, Plan, AuditLog
 
-Import order inside this file is important:
+Alternative explicit style:
+    from app.db.models.user import User
+    from app.db.models.project import Project, ProjectStatus
+
+Import order inside this file is important (dependency order):
 1. Base (always first)
 2. Independent / core models (Org, Plan, User...)
 3. Dependent models (Project → depends on User/Org)
@@ -47,6 +51,7 @@ from .audit import AuditLog
 # Public exports (__all__)
 # ────────────────────────────────────────────────
 # Controls what is available when doing `from app.db.models import *`
+# Add new models here when created (in dependency order)
 __all__ = [
     # Base class
     "Base",
@@ -66,10 +71,14 @@ __all__ = [
     # Audit trail
     "AuditLog",
 
-    # Add future models here (in dependency order)
-    # e.g. "Subscription", "CreditTransaction", "Payment", "Invitation"
+    # Future models (add here when created)
+    # "Subscription",
+    # "CreditTransaction",
+    # "Payment",
+    # "Invitation",
+    # "TeamMember",
 ]
 
-# Prevent accidental execution when imported
+# Safety guard: prevent accidental execution as script
 if __name__ == "__main__":
     print("This is a model aggregator module — do not run directly.")
