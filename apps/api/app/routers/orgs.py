@@ -8,7 +8,7 @@ Only org_owners/admins can manage their org.
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Annotated, Optional
+from typing import List, Annotated, Optional, Dict
 from uuid import UUID
 
 from fastapi import (
@@ -19,10 +19,12 @@ from fastapi import (
     Request,
     Response,
 )
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -35,8 +37,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
 
-# Rate limiter — uses client IP
-limiter = Limiter(key_func=lambda r: r.client.host)
+security = HTTPBearer(auto_error=False)
+
+# Rate limiter: 5 actions per minute per authenticated user
+limiter = Limiter(key_func=lambda r: r.state.user_id if hasattr(r.state, "user_id") else get_remote_address())
 
 
 class OrgCreate(BaseModel):
@@ -56,6 +60,7 @@ class OrgOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     member_count: int = 0
+    is_active: bool = False  # Whether this is the user's current org
 
     class Config:
         from_attributes = True
@@ -76,27 +81,32 @@ async def create_org(
 ):
     """
     Create a new organization and assign current user as org_owner.
+    Slug is auto-generated if not provided.
     """
-    # Check slug uniqueness if provided
+    # Slug conflict check
     if payload.slug:
         existing = await db.scalar(select(Org).where(Org.slug == payload.slug))
         if existing:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Slug already in use")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Slug already in use. Choose another or leave empty for auto-generation."
+            )
 
     org = Org(
         name=payload.name,
-        slug=payload.slug or f"org-{UUID().hex[:8]}",  # Auto-generate if missing
+        slug=payload.slug or f"org-{UUID().hex[:8]}",
     )
     db.add(org)
     await db.flush()  # Get org.id
 
-    # Assign current user as owner
+    # Assign user as owner
     user = await db.get(User, UUID(current_user.id))
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
     user.org_id = org.id
-    user.roles.append("org_owner")
+    if "org_owner" not in user.roles:
+        user.roles.append("org_owner")
 
     await db.commit()
     await db.refresh(org)
@@ -105,17 +115,24 @@ async def create_org(
     audit_log.delay(
         user_id=current_user.id,
         action="org_created",
-        metadata={"org_id": str(org.id), "name": org.name, "slug": org.slug}
+        metadata={
+            "org_id": str(org.id),
+            "name": org.name,
+            "slug": org.slug,
+            "member_count": 1,
+        },
+        request=request,
     )
 
-    return {
-        "id": org.id,
-        "name": org.name,
-        "slug": org.slug,
-        "created_at": org.created_at,
-        "updated_at": org.updated_at,
-        "member_count": 1,
-    }
+    return OrgOut(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+        member_count=1,
+        is_active=True,
+    )
 
 
 @router.get(
@@ -128,7 +145,7 @@ async def list_orgs(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    List all organizations the current user is a member of.
+    List all organizations the current user is a member of, with member counts.
     """
     stmt = (
         select(Org)
@@ -139,11 +156,12 @@ async def list_orgs(
     result = await db.execute(stmt)
     orgs = result.scalars().all()
 
-    # Compute member count efficiently
+    # Efficiently compute member counts
     for org in orgs:
         count_stmt = select(func.count(User.id)).where(User.org_id == org.id)
         count = await db.scalar(count_stmt)
         org.member_count = count or 0
+        org.is_active = str(org.id) == current_user.org_id
 
     return orgs
 
@@ -170,9 +188,16 @@ async def get_org(
 
     count_stmt = select(func.count(User.id)).where(User.org_id == org_id)
     count = await db.scalar(count_stmt)
-    org.member_count = count or 0
 
-    return org
+    return OrgOut(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+        member_count=count or 0,
+        is_active=str(org.id) == current_user.org_id,
+    )
 
 
 @router.patch(
@@ -204,19 +229,37 @@ async def update_org(
             select(Org).where(Org.slug == payload.slug, Org.id != org_id)
         )
         if existing:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Slug already in use")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Slug already in use by another organization"
+            )
         org.slug = payload.slug
 
     await db.commit()
     await db.refresh(org)
 
     audit_log.delay(
-        current_user.id,
-        "org_updated",
-        {"org_id": str(org_id), "changes": payload.dict(exclude_unset=True)}
+        user_id=current_user.id,
+        action="org_updated",
+        metadata={
+            "org_id": str(org_id),
+            "changes": payload.dict(exclude_unset=True)
+        },
+        request=request,
     )
 
-    return org
+    count_stmt = select(func.count(User.id)).where(User.org_id == org_id)
+    count = await db.scalar(count_stmt)
+
+    return OrgOut(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+        member_count=count or 0,
+        is_active=True,
+    )
 
 
 @router.delete(
@@ -243,9 +286,10 @@ async def delete_org(
     await db.commit()
 
     audit_log.delay(
-        current_user.id,
-        "org_deleted",
-        {"org_id": str(org_id), "name": org.name}
+        user_id=current_user.id,
+        action="org_deleted",
+        metadata={"org_id": str(org_id), "name": org.name},
+        request=request,
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -261,7 +305,6 @@ async def switch_org(
     request: Request,
     org_id: UUID,
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -275,11 +318,13 @@ async def switch_org(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this organization")
 
     # TODO: In future — issue new JWT with updated org_id claim
+    # For now: just log the switch
 
     audit_log.delay(
-        current_user.id,
-        "org_switched",
-        {"new_org_id": str(org_id)}
+        user_id=current_user.id,
+        action="org_switched",
+        metadata={"new_org_id": str(org_id)},
+        request=request,
     )
 
     return {"message": f"Switched to organization {org_id}"}
