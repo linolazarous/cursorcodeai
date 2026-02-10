@@ -1,7 +1,7 @@
 # apps/api/app/main.py
 """
 CursorCode AI FastAPI Application Entry Point
-Production-ready (February 2026): middleware, lifespan, observability, security.
+Production-ready (February 2026): middleware stack, lifespan, observability, security.
 Supabase-ready: external managed Postgres, no auto-migrations, no engine dispose.
 Custom monitoring: structured logging + Supabase error table + Prometheus /metrics.
 """
@@ -16,14 +16,12 @@ from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import insert
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
-from app.db.session import engine, init_db, get_db
+from app.db.session import lifespan  # ← From session.py (init_db + dispose)
+from app.db.models import User, Org, Project, Plan, AuditLog  # ← New model imports
 from app.routers import (
     auth,
     orgs,
@@ -31,14 +29,16 @@ from app.routers import (
     billing,
     webhook,
     admin,
-    monitoring,           # ← Added monitoring router
+    monitoring,
 )
-from app.middleware.auth import auth_middleware           # Selective (Depends)
+from app.middleware.auth import get_current_user  # Used selectively via Depends
 from app.middleware.logging import log_requests_middleware
 from app.middleware.security import add_security_headers
-from app.middleware.rate_limit import limiter, RateLimitMiddleware
-
-# Prometheus metrics (custom monitoring)
+from app.middleware.rate_limit import (
+    limiter,
+    RateLimitMiddleware,
+    rate_limit_exceeded_handler,
+)
 from app.monitoring.metrics import registry, http_requests_total, http_request_duration_seconds
 from prometheus_client import generate_latest
 
@@ -54,40 +54,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────
-# Global Rate Limiter (Redis-backed)
-# ────────────────────────────────────────────────
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# ────────────────────────────────────────────────
-# Lifespan (startup & shutdown) – Supabase-friendly
-# ────────────────────────────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # ── Startup ─────────────────────────────────────
-    request_id = str(uuid.uuid4())
-    logger.info(
-        f"Starting CursorCode AI API v{settings.APP_VERSION} "
-        f"in {settings.ENVIRONMENT.upper()} mode",
-        extra={"request_id": request_id}
-    )
-
-    try:
-        await init_db()
-        db_type = "Supabase" if "supabase" in str(settings.DATABASE_URL).lower() else "PostgreSQL"
-        logger.info(f"{db_type} connection verified", extra={"request_id": request_id})
-    except Exception as exc:
-        logger.critical(f"Database connection failed on startup: {exc}", extra={"request_id": request_id})
-        # Continue in production (alert via logs/Prometheus)
-
-    yield
-
-    # ── Shutdown ────────────────────────────────────
-    logger.info("CursorCode AI API shutting down...", extra={"request_id": request_id})
-    logger.info("Shutdown complete", extra={"request_id": request_id})
-
-
-# ────────────────────────────────────────────────
 # FastAPI Application
 # ────────────────────────────────────────────────
 app = FastAPI(
@@ -96,7 +62,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url=None,
-    lifespan=lifespan,
+    lifespan=lifespan,  # ← Handles startup DB check + shutdown dispose
     debug=settings.ENVIRONMENT == "development",
     openapi_tags=[
         {"name": "Authentication", "description": "User auth & sessions"},
@@ -116,7 +82,7 @@ app = FastAPI(
 # 1. CORS (must be first)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=[str(origin) for origin in settings.CORS_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -125,14 +91,14 @@ app.add_middleware(
 # 2. Security Headers (CSP, HSTS, etc.)
 app.add_middleware(BaseHTTPMiddleware, dispatch=add_security_headers)
 
-# 3. Structured Request Logging + Prometheus instrumentation
+# 3. Request Logging + Prometheus Metrics
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     method = request.method
     path = request.url.path
     start_time = time.time()
 
-    # Add correlation ID
+    # Correlation ID
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
 
@@ -149,14 +115,15 @@ async def metrics_middleware(request: Request, call_next):
 
     return response
 
-# 4. Rate Limiting Middleware (Redis + user-aware keys)
+# 4. Rate Limiting (Redis + user-aware keys)
 app.add_middleware(RateLimitMiddleware)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Custom auth middleware — applied selectively via Depends (not global)
-# Do NOT add app.middleware('http')(auth_middleware) here
 
 # ────────────────────────────────────────────────
-# Routers
+# Routers (all prefixed and tagged)
 # ────────────────────────────────────────────────
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(orgs.router, prefix="/orgs", tags=["Organizations"])
@@ -164,10 +131,10 @@ app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 app.include_router(billing.router, prefix="/billing", tags=["Billing"])
 app.include_router(webhook.router, prefix="/webhook", tags=["Webhooks"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
-app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])  # ← Added here
+app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])
 
 # ────────────────────────────────────────────────
-# Prometheus Metrics Endpoint
+# Prometheus Metrics Endpoint (for monitoring)
 # ────────────────────────────────────────────────
 @app.get("/metrics", include_in_schema=False)
 async def metrics():
@@ -175,12 +142,12 @@ async def metrics():
 
 
 # ────────────────────────────────────────────────
-# Custom Global Exception Handler (custom monitoring)
+# Custom Global Exception Handler (structured + Supabase logging)
 # ────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def custom_exception_handler(request: Request, exc: Exception):
     """
-    Custom monitoring handler:
+    Custom handler:
     - Structured logging with context
     - Store error in Supabase 'app_errors' table
     - Return user-friendly 500 response
@@ -190,7 +157,6 @@ async def custom_exception_handler(request: Request, exc: Exception):
     path = request.url.path
     method = request.method
 
-    # Structured log with correlation ID
     logger.exception(
         f"Unhandled exception: {exc}",
         extra={
@@ -204,7 +170,7 @@ async def custom_exception_handler(request: Request, exc: Exception):
         }
     )
 
-    # Log to Supabase (async)
+    # Log to Supabase 'app_errors' (async)
     try:
         async with get_db() as db:
             await db.execute(
@@ -234,7 +200,7 @@ async def custom_exception_handler(request: Request, exc: Exception):
 
 
 # ────────────────────────────────────────────────
-# Health / Readiness / Liveness
+# Health / Readiness / Liveness Endpoints
 # ────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health_check():
