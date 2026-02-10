@@ -1,4 +1,4 @@
-# apps/api/app/db/models/org.py
+# apps/api/app/models/org.py
 """
 Organization (tenant) model for CursorCode AI
 Multi-tenant foundation: users, projects, billing scoped to org.
