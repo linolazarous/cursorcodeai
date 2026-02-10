@@ -12,7 +12,6 @@ from typing import TypedDict, Annotated, Sequence, Dict, Any, List
 from uuid import uuid4
 
 from langgraph.graph import StateGraph, END
-from langgraph_checkpoint_redis.aio import AsyncRedisSaver   # ← FIXED import
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -189,10 +188,8 @@ def build_agent_graph():
     # End after devops
     graph.add_edge("devops", END)
 
-    # Persistence (async Redis)
-    saver = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
-
-    return graph.compile(checkpointer=saver)
+    # No Redis persistence – use default in-memory checkpointer
+    return graph.compile()
 
 
 # ────────────────────────────────────────────────
