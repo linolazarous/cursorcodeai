@@ -1,8 +1,9 @@
 # apps/api/app/ai/langchain_xai.py
 """
-Custom LangChain integration for xAI Grok API
-OpenAI-compatible ChatModel wrapper using httpx.
+Custom xAI Grok API integration for CursorCode AI
+OpenAI-compatible ChatModel wrapper using raw httpx.
 Supports Grok models (grok-beta, grok-4, etc.) via https://api.x.ai/v1
+Fully async, production-ready (February 2026).
 """
 
 import logging
@@ -16,19 +17,24 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     SystemMessage,
-    messages_from_dict,
 )
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.pydantic_v1 import Field, SecretStr, validator
 
 logger = logging.getLogger(__name__)
 
+
 class ChatXAI(BaseChatModel):
-    """Chat model for xAI Grok API."""
+    """
+    Custom ChatModel for xAI Grok API.
+    OpenAI-compatible endpoint: https://api.x.ai/v1/chat/completions
+    Fully async support with httpx.
+    """
 
     model: str = Field(..., description="Model name, e.g. 'grok-beta'")
     api_key: SecretStr = Field(..., env="XAI_API_KEY")
     base_url: str = "https://api.x.ai/v1"
+
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(default=None, ge=1)
     top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -60,6 +66,7 @@ class ChatXAI(BaseChatModel):
         }
 
     def _convert_messages_to_dicts(self, messages: List[BaseMessage]) -> List[Dict]:
+        """Convert LangChain messages to xAI API format."""
         result = []
         for message in messages:
             if isinstance(message, SystemMessage):
@@ -84,6 +91,7 @@ class ChatXAI(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        """Sync generation (fallback)."""
         payload = {
             "model": self.model,
             "messages": self._convert_messages_to_dicts(messages),
@@ -95,7 +103,6 @@ class ChatXAI(BaseChatModel):
             "stop": stop,
         }
 
-        # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
 
         try:
@@ -117,7 +124,7 @@ class ChatXAI(BaseChatModel):
             generation = ChatGeneration(
                 message=AIMessage(content=content),
                 generation_info={
-                    "finish_reason": choice["finish_reason"],
+                    "finish_reason": choice.get("finish_reason"),
                     "usage": data.get("usage", {}),
                 },
             )
@@ -138,6 +145,7 @@ class ChatXAI(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        """Async generation (primary path)."""
         payload = {
             "model": self.model,
             "messages": self._convert_messages_to_dicts(messages),
@@ -170,7 +178,7 @@ class ChatXAI(BaseChatModel):
             generation = ChatGeneration(
                 message=AIMessage(content=content),
                 generation_info={
-                    "finish_reason": choice["finish_reason"],
+                    "finish_reason": choice.get("finish_reason"),
                     "usage": data.get("usage", {}),
                 },
             )
