@@ -3,8 +3,8 @@
 Core AI Agent Orchestration - CursorCode AI
 LangGraph-based multi-agent system powered by xAI Grok (multi-model routing).
 Handles: architecture → frontend/backend → security/qa → devops → deploy.
-With tools, RAG/memory, credit metering, email notifications, persistence.
-Now supports real-time token streaming for frontend display.
+With tools, RAG/memory, credit metering, email notifications.
+Now supports real-time token streaming for frontend display using raw httpx.
 """
 
 import logging
@@ -24,10 +24,9 @@ from app.services.billing import deduct_credits, refund_credits
 from app.services.email import send_deployment_success_email
 from app.services.logging import audit_log
 from app.tasks.metering import report_grok_usage
-from .nodes import agent_node  # Per-agent node factory
+from .nodes import agent_node  # Per-agent node factory (non-streaming fallback)
 from .tools import tools       # All available tools
-from .llm import stream_routed_llm  # ← Streaming version from llm.py
-from .router import get_model_for_agent
+from .llm import stream_routed_llm  # Raw streaming LLM from llm.py
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +127,7 @@ async def error_handler(state: AgentState) -> Dict:
 
 
 # ────────────────────────────────────────────────
-# Build Graph (non-streaming internal execution)
+# Build Graph (non-streaming fallback – still used in legacy Celery)
 # ────────────────────────────────────────────────
 def build_agent_graph():
     graph = StateGraph(AgentState)
@@ -142,9 +141,8 @@ def build_agent_graph():
 
     graph.add_node("rag_inject", rag_inject)
 
-    # Agent nodes (non-streaming wrapper around streaming LLM)
+    # Agent nodes (use raw streaming under the hood for consistency)
     async def run_agent_step(state: AgentState, agent_type: str):
-        # Use streaming LLM under the hood
         system_prompt = f"Act as {agent_type} agent. Follow instructions precisely."
         full_messages = [{"role": "system", "content": system_prompt}] + [
             {"role": m.type, "content": m.content} for m in state["messages"]
@@ -154,7 +152,7 @@ def build_agent_graph():
         async for chunk in stream_routed_llm(
             agent_type=agent_type,
             messages=full_messages,
-            user_tier="starter",  # from auth in real use
+            user_tier="starter",  # Replace with real user_tier from auth
             task_complexity="medium",
             tools=tools,  # or agent-specific subset
         ):
@@ -191,7 +189,7 @@ def build_agent_graph():
 
 
 # ────────────────────────────────────────────────
-# Streaming Orchestration (public API for frontend)
+# Streaming Orchestration (main public API for frontend real-time)
 # ────────────────────────────────────────────────
 async def stream_orchestration(
     project_id: str,
@@ -202,7 +200,7 @@ async def stream_orchestration(
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that streams tokens as the full orchestration runs.
-    Yields chunks from each agent's response in real time.
+    Yields real-time chunks from each agent's response.
     """
     estimated_cost = 10
 
@@ -231,7 +229,6 @@ async def stream_orchestration(
         )
 
         try:
-            # Run graph step by step, streaming agent outputs
             current_state = initial_state
             for node in ["rag_inject", "architect", "frontend", "backend", "security", "qa", "devops"]:
                 if node == "rag_inject":
@@ -254,7 +251,7 @@ async def stream_orchestration(
 
                 current_state.update(update)
 
-            # Final success handling (non-streamed part)
+            # Final success handling
             project = await db.get(Project, project_id)
             if project:
                 project.status = ProjectStatus.COMPLETED
