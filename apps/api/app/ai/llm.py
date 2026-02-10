@@ -2,16 +2,17 @@
 """
 Grok LLM Factory - CursorCode AI
 Creates routed ChatGroq instances with optimal model, parameters, and tools.
-Production-ready (February 2026): caching, tier-aware routing, dynamic params.
-Uses custom programmatic monitoring instead of Sentry.
+Production-ready (February 2026): caching, tier-aware routing, dynamic params, streaming support.
+Uses official langchain-groq integration + custom programmatic monitoring.
 """
 
 import logging
 from functools import lru_cache
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncGenerator
 
-from langchain_groq import ChatGroq           # ← Official LangChain + Grok integration
+from langchain_groq import ChatGroq
 from langchain_core.tools import BaseTool
+from langchain_core.messages import AIMessageChunk
 
 from app.core.config import settings
 from app.ai.router import get_model_for_agent
@@ -39,7 +40,7 @@ def get_llm(
     llm = ChatGroq(
         model=model_name,
         groq_api_key=settings.XAI_API_KEY.get_secret_value(),
-        base_url="https://api.x.ai/v1",           # xAI endpoint
+        base_url="https://api.x.ai/v1",
         temperature=temperature,
         max_tokens=max_tokens,
         top_p=top_p,
@@ -56,19 +57,19 @@ def get_llm(
 
 
 # ────────────────────────────────────────────────
-# Routed LLM Factory (main entry point)
+# Routed LLM Factory (synchronous call)
 # ────────────────────────────────────────────────
 def get_routed_llm(
     agent_type: str,
-    user_tier: str = "starter",           # starter/standard/pro/premier/ultra
-    task_complexity: str = "medium",      # low/medium/high
+    user_tier: str = "starter",
+    task_complexity: str = "medium",
     tools: Optional[List[BaseTool]] = None,
     override_temperature: Optional[float] = None,
     override_max_tokens: Optional[int] = None,
 ) -> ChatGroq:
     """
     Returns fully configured ChatGroq instance for the given agent/task.
-    Uses router to select model, applies tier/complexity-aware params.
+    Use this for non-streaming calls.
     """
     # 1. Route to optimal model
     model_name = get_model_for_agent(
@@ -80,7 +81,7 @@ def get_routed_llm(
     # 2. Dynamic generation parameters
     if agent_type in ["architect", "security", "product"]:
         temperature = 0.2 if override_temperature is None else override_temperature
-        max_tokens = 12288 if override_max_tokens is None else override_max_tokens  # Longer context
+        max_tokens = 12288 if override_max_tokens is None else override_max_tokens
         top_p = 0.85
         frequency_penalty = 0.1
     elif agent_type in ["frontend", "backend"]:
@@ -88,13 +89,12 @@ def get_routed_llm(
         max_tokens = 8192
         top_p = 0.9
         frequency_penalty = 0.0
-    else:  # qa, devops, high-throughput
+    else:
         temperature = 0.7
         max_tokens = 4096
         top_p = 0.95
         frequency_penalty = 0.0
 
-    # Override if explicitly passed
     temperature = override_temperature if override_temperature is not None else temperature
     max_tokens = override_max_tokens if override_max_tokens is not None else max_tokens
 
@@ -108,9 +108,9 @@ def get_routed_llm(
         tools=tools,
     )
 
-    # 4. Audit model choice (custom monitoring)
+    # 4. Audit model choice
     audit_log.delay(
-        user_id=None,  # Filled by caller context
+        user_id=None,
         action="grok_llm_routed",
         metadata={
             "agent_type": agent_type,
@@ -120,6 +120,7 @@ def get_routed_llm(
             "temperature": temperature,
             "max_tokens": max_tokens,
             "tools_count": len(tools) if tools else 0,
+            "streaming": False,
         }
     )
 
@@ -129,6 +130,73 @@ def get_routed_llm(
     )
 
     return llm
+
+
+# ────────────────────────────────────────────────
+# Streaming Version (main entry point for streaming responses)
+# ────────────────────────────────────────────────
+async def stream_routed_llm(
+    agent_type: str,
+    messages: List[Dict[str, Any]],  # [{"role": "user", "content": "..."}, ...]
+    user_tier: str = "starter",
+    task_complexity: str = "medium",
+    tools: Optional[List[BaseTool]] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> AsyncGenerator[str, None]:
+    """
+    Async generator that streams tokens from Grok API.
+    Yields content chunks as they arrive.
+    """
+    # 1. Route model & parameters (same as non-streaming)
+    model_name = get_model_for_agent(agent_type, user_tier, task_complexity)
+
+    temp = temperature if temperature is not None else 0.7
+    max_t = max_tokens if max_tokens is not None else 8192
+
+    # 2. Get LLM instance
+    llm = get_llm(
+        model_name=model_name,
+        temperature=temp,
+        max_tokens=max_t,
+        top_p=0.9 if "reasoning" in model_name else 0.95,
+        frequency_penalty=0.0,
+        tools=tools,
+    )
+
+    # 3. Audit streaming call
+    audit_log.delay(
+        user_id=None,
+        action="grok_llm_stream_started",
+        metadata={
+            "agent_type": agent_type,
+            "user_tier": user_tier,
+            "task_complexity": task_complexity,
+            "model": model_name,
+            "temperature": temp,
+            "max_tokens": max_t,
+            "tools_count": len(tools) if tools else 0,
+            "streaming": True,
+        }
+    )
+
+    logger.info(
+        f"Streaming LLM started for {agent_type} (tier={user_tier}, complexity={task_complexity}): "
+        f"{model_name} @ temp={temp}, tokens={max_t}"
+    )
+
+    # 4. Stream tokens
+    try:
+        async for chunk in llm.astream(messages):
+            if isinstance(chunk, AIMessageChunk):
+                if chunk.content:
+                    yield chunk.content
+    except Exception as exc:
+        logger.exception("Streaming failed")
+        yield f"[ERROR] Streaming failed: {str(exc)}"
+
+    # End of stream
+    yield "[DONE]"
 
 
 # ────────────────────────────────────────────────
