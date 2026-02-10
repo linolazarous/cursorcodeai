@@ -1,5 +1,5 @@
 # apps/api/requirements.txt
-# Last fixed: 2026-02-10 – compatible versions, no conflicts
+# Last updated: 2026-02-10 – no Redis checkpoint, compatible & minimal
 
 fastapi==0.115.2
 uvicorn[standard]==0.30.6
@@ -19,13 +19,9 @@ pyotp==2.9.0
 cryptography==43.0.0
 passlib[bcrypt]==1.7.4
 
-# ────────────────────────────────────────────────
-# AI stack – carefully chosen compatible versions
-# ────────────────────────────────────────────────
+# AI / LangGraph stack (no Redis checkpoint)
 langchain-core==0.2.38
 langgraph==0.2.14
-langgraph-checkpoint==1.0.12          # required by langgraph 0.2.14
-langgraph-checkpoint-redis==0.1.0     # compatible with checkpoint 1.x
 tenacity==8.5.0
 
 stripe==11.4.0
