@@ -6,9 +6,9 @@ All models inherit from this Base class.
 This file is kept minimal:
 - Defines the abstract Base (never mapped to a table)
 - Provides safe __repr__ / __str__ helpers
-- TimestampMixin, UUIDMixin, SoftDeleteMixin, etc. are in db/models/mixins.py
+- All reusable patterns (timestamps, UUID, soft-delete, audit, slug, etc.) are in db/models/mixins.py and utils.py
 
-Do NOT add table-specific logic here — keep models clean and modular.
+Do NOT add table-specific logic or mixins here — keep models clean and modular.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ class Base(DeclarativeBase):
     # }
 
     def __repr__(self) -> str:
-        """Safe, readable representation (avoids loading large relationships)."""
+        """Safe, readable representation (avoids loading large relationships or lazy fields)."""
         fields = ", ".join(
             f"{k}={v!r}"
             for k, v in self.__dict__.items()
@@ -47,5 +47,5 @@ class Base(DeclarativeBase):
         return f"{self.__class__.__name__}({fields})"
 
     def __str__(self) -> str:
-        """Human-readable string (useful in logs)."""
+        """Human-readable string representation (useful in logs and debugging)."""
         return self.__repr__()
