@@ -3,13 +3,13 @@
 Reusable SQLAlchemy mixins for CursorCode AI models.
 These mixins provide common patterns used across entities:
 - UUID primary key
+- Automatic timestamps (created_at / updated_at)
 - Soft-delete support
-- Audit fields (created_by, updated_by)
-- Slug field (with uniqueness helper in utils.py)
-- Timestamps (moved from base.py to here for consistency)
+- Audit trail (created_by / updated_by)
+- Slug field (URL-friendly identifier)
 
 Usage example:
-    class MyModel(Base, UUIDMixin, SoftDeleteMixin, AuditMixin):
+    class MyModel(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin):
         ...
 """
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
-from uuid import uuid4  # ← FIXED: import uuid4 here
+from uuid import uuid4
 
 from sqlalchemy import String, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -34,10 +34,30 @@ class UUIDMixin:
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        default=uuid4,  # ← Now works
+        default=uuid4,
         server_default=func.gen_random_uuid(),
         index=True,
         comment="Unique identifier (UUIDv4)"
+    )
+
+
+class TimestampMixin:
+    """
+    Mixin that adds automatic created_at / updated_at timestamps.
+    Server-side defaults and updates — no Python code needed.
+    """
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(),
+        nullable=False,
+        comment="When the record was created (UTC)"
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+        index=True,
+        comment="When the record was last updated (UTC)"
     )
 
 
