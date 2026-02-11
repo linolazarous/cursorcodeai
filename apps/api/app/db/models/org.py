@@ -39,7 +39,7 @@ class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixi
         "User",
         back_populates="org",
         cascade="all, delete-orphan",
-        passive_deletes=True
+        passive_deletes=True  # Consistent with projects
     )
 
     projects: Mapped[List["Project"]] = relationship(
