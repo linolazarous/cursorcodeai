@@ -12,8 +12,8 @@ from sqlalchemy import Boolean, ForeignKey, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.models import Base  # ← FIXED: use aggregator
-from app.db.models.mixins import UUIDMixin, SoftDeleteMixin, AuditMixin, SlugMixin
+from app.db.models import Base
+from app.db.models.mixins import UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin
 from app.db.models.utils import generate_unique_slug
 
 from . import UserRole  # Enum from same package
@@ -31,7 +31,7 @@ class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixi
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     slug: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True, index=True)
 
-    # Relationships
+    # Relationships (forward refs via string names — no import needed)
     users: Mapped[List["User"]] = relationship(
         "User", back_populates="org", cascade="all, delete-orphan"
     )
@@ -105,7 +105,7 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMix
         String(50), default="inactive", nullable=False
     )
 
-    # Relationships
+    # Relationships (forward refs via string names — no import needed)
     projects: Mapped[List["Project"]] = relationship(
         "Project", back_populates="user", cascade="all, delete-orphan"
     )
