@@ -8,10 +8,10 @@ Purpose:
 - Makes model usage consistent and IDE-friendly
 
 Recommended usage (preferred style):
-    from app.db.models import User, Project, Base, ProjectStatus, Org, Plan, AuditLog
+    from app.db.models import User, Org, Project, Plan, AuditLog, Base, ProjectStatus, UserRole
 
-Alternative explicit style:
-    from app.db.models.user import User
+Alternative explicit style (safer for large projects):
+    from app.db.models.user import User, UserRole
     from app.db.models.project import Project, ProjectStatus
 
 Import order inside this file is important (dependency order):
@@ -19,6 +19,9 @@ Import order inside this file is important (dependency order):
 2. Independent / core models (Org, Plan, User...)
 3. Dependent models (Project → depends on User/Org)
 4. Audit / history models (last, as they may reference others)
+
+Avoid wildcard imports (`from app.db.models import *`) in production code
+to prevent namespace pollution and make dependencies explicit.
 """
 
 # ────────────────────────────────────────────────
@@ -53,25 +56,25 @@ from .audit import AuditLog
 # Controls what is available when doing `from app.db.models import *`
 # Add new models here when created (in dependency order)
 __all__ = [
-    # Base class
+    # Base class & enums
     "Base",
+    "UserRole",
+    "ProjectStatus",
 
     # Organization & User
     "Org",
     "User",
-    "UserRole",
 
     # Billing / Plans
     "Plan",
 
     # Projects
     "Project",
-    "ProjectStatus",
 
     # Audit trail
     "AuditLog",
 
-    # Future models (add here when created)
+    # Future models (add here when created, maintain order)
     # "Subscription",
     # "CreditTransaction",
     # "Payment",
