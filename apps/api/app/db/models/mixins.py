@@ -1,15 +1,15 @@
-# app/db/models/mixins.py
+# apps/api/app/db/models/mixins.py
 """
 Reusable SQLAlchemy mixins for CursorCode AI models.
 These mixins provide common patterns used across entities:
 - UUID primary key
 - Soft-delete support
 - Audit fields (created_by, updated_by)
-- Slug generation helper
-- Timestamps already in TimestampMixin (base.py)
+- Slug field (with uniqueness helper in utils.py)
+- Timestamps (moved from base.py to here for consistency)
 
 Usage example:
-    class MyModel(Base, UUIDMixin, SoftDeleteMixin, AuditMixin):
+    class MyModel(Base, UUIDMixin, SoftDeleteMixin, AuditMixin, SlugMixin):
         ...
 """
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
-from uuid import uuid4
 
 from sqlalchemy import String, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -28,8 +27,8 @@ from .base import Base
 
 class UUIDMixin:
     """
-    Mixin that replaces autoincrement int ID with UUID primary key.
-    Recommended default for all new models in distributed systems.
+    Mixin that uses UUIDv4 as primary key instead of autoincrement int.
+    Recommended default for all models in distributed systems (no conflicts, easier sharding).
     """
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=True),
@@ -43,8 +42,8 @@ class UUIDMixin:
 
 class SoftDeleteMixin:
     """
-    Mixin for soft-delete support (deleted_at timestamp).
-    Allows logical deletion without data loss.
+    Mixin for soft-delete support via deleted_at timestamp.
+    Allows logical deletion without data loss (compliance & recovery friendly).
     """
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         nullable=True,
@@ -66,15 +65,15 @@ class SoftDeleteMixin:
 class AuditMixin:
     """
     Mixin for audit trail fields (who created/updated the record).
-    Useful for compliance and debugging.
-    Requires User model to exist.
+    Useful for compliance, debugging, and traceability.
+    Requires User model to exist (references users.id).
     """
     created_by_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-        comment="User who created this record"
+        comment="User who created this record (null = system)"
     )
 
     updated_by_id: Mapped[Optional[str]] = mapped_column(
@@ -82,19 +81,20 @@ class AuditMixin:
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-        comment="User who last updated this record"
+        comment="User who last updated this record (null = system)"
     )
 
 
 class SlugMixin:
     """
-    Mixin for URL-friendly slug field with uniqueness.
+    Mixin for URL-friendly slug field with uniqueness constraint.
     Useful for organizations, projects, public pages, etc.
+    Use generate_unique_slug() from utils.py to create safe slugs.
     """
     slug: Mapped[Optional[str]] = mapped_column(
         String(100),
         unique=True,
         nullable=True,
         index=True,
-        comment="URL-friendly identifier"
+        comment="URL-friendly identifier (auto-generated if empty)"
     )
