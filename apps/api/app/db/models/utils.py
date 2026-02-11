@@ -90,8 +90,8 @@ async def is_slug_unique(
 async def generate_unique_slug(
     text: str,
     model_class: Type,
+    db: AsyncSession,                # Required first (no default)
     exclude_id: Optional[str] = None,
-    db: AsyncSession,
     max_length: int = 100,
     max_attempts: int = 10,
     suffix_length: int = 6,
@@ -105,8 +105,8 @@ async def generate_unique_slug(
     Args:
         text: Base text (e.g. title, name)
         model_class: SQLAlchemy model class
+        db: Async DB session (required)
         exclude_id: UUID to exclude (for updates)
-        db: Async DB session
         max_length: Max slug length
         max_attempts: Max retries before raising error
         suffix_length: Length of random hex suffix
