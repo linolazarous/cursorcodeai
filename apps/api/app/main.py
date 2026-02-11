@@ -15,11 +15,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.base import BaseHTTPMiddleware
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import insert
 
 from app.core.config import settings
-from app.db.session import lifespan  # Handles DB startup check + shutdown
-from app.db.models import User, Org, Project, Plan, AuditLog  # ← Correct model imports
+from app.db.session import lifespan, get_db  # DB startup + per-request session
+from app.db.models import User, Org, Project, Plan, AuditLog  # Correct model imports
 from app.routers import (
     auth,
     orgs,
@@ -60,7 +62,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url=None,
-    lifespan=lifespan,  # DB connection check on startup + cleanup on shutdown
+    lifespan=lifespan,
     debug=settings.ENVIRONMENT == "development",
     openapi_tags=[
         {"name": "Authentication", "description": "User auth & sessions"},
@@ -189,7 +191,10 @@ async def custom_exception_handler(request: Request, exc: Exception):
             )
             await db.commit()
     except Exception as db_exc:
-        logger.error(f"Failed to log error to Supabase: {db_exc}", extra={"request_id": request_id})
+        logger.error(
+            f"Failed to log error to Supabase: {db_exc}",
+            extra={"request_id": request_id}
+        )
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -207,8 +212,20 @@ async def health_check():
 
 @app.get("/ready", tags=["Health"])
 async def readiness_check():
-    # Optional: add real checks (DB ping, Redis ping)
-    return {"status": "ready"}
+    """
+    Readiness probe: DB ping (optional Redis ping if used).
+    """
+    try:
+        async with get_db() as db:
+            await db.execute(text("SELECT 1"))
+        # Optional Redis check (uncomment if using Redis)
+        # from redis.asyncio import Redis
+        # redis = Redis.from_url(settings.REDIS_URL)
+        # await redis.ping()
+        return {"status": "ready"}
+    except Exception as e:
+        logger.error("Readiness check failed", exc_info=True)
+        return JSONResponse(status_code=503, content={"status": "not ready", "error": str(e)})
 
 
 @app.get("/live", tags=["Health"])
