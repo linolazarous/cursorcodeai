@@ -12,7 +12,7 @@ from sqlalchemy import Boolean, ForeignKey, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from enum import Enum  # ← FIXED: import Enum here
+from enum import Enum
 
 from app.db.models import Base
 from app.db.models.mixins import UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin
@@ -33,6 +33,7 @@ class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixi
     - Supports teams (multiple users)
     """
     __tablename__ = "orgs"
+    __table_args__ = {'extend_existing': True}  # ← FIXED: prevents duplicate table error
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     slug: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True, index=True)
@@ -62,6 +63,7 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMix
     - Full billing, 2FA, verification, reset support
     """
     __tablename__ = "users"
+    __table_args__ = {'extend_existing': True}  # ← FIXED: prevents duplicate table error
 
     email: Mapped[str] = mapped_column(
         String(255), unique=True, nullable=False, index=True
