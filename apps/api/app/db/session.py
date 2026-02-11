@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────────────
 engine: AsyncEngine = create_async_engine(
     str(settings.DATABASE_URL),
-    echo=settings.ENVIRONMENT == "development",  # SQL logging only in dev
+    echo=settings.ENVIRONMENT == "development",          # SQL logging only in dev
+    echo_pool="debug" if settings.ENVIRONMENT == "development" else False,
     future=True,
     # Pooling tuned for Supabase + serverless platforms (Render/Fly/Railway)
     pool_pre_ping=True,           # Detect & replace broken/stale connections
@@ -85,16 +86,26 @@ async def init_db():
             await conn.commit()
 
         db_type = "Supabase (pooled)" if "supabase" in str(settings.DATABASE_URL).lower() else "PostgreSQL"
-        logger.info(f"{db_type} connection verified successfully")
+        logger.info(
+            f"{db_type} connection verified successfully",
+            extra={"database_url": str(settings.DATABASE_URL)}
+        )
 
         # Optional: test Redis if used for Celery/rate limiting
-        # from redis.asyncio import Redis
-        # redis = Redis.from_url(settings.REDIS_URL)
-        # await redis.ping()
-        # logger.info("Redis connection verified")
+        # try:
+        #     from redis.asyncio import Redis
+        #     redis = Redis.from_url(settings.REDIS_URL)
+        #     await redis.ping()
+        #     logger.info("Redis connection verified", extra={"redis_url": settings.REDIS_URL})
+        # except Exception as redis_exc:
+        #     logger.warning("Redis ping failed", exc_info=redis_exc)
 
     except Exception as e:
-        logger.critical("Database connection failed on startup", exc_info=True)
+        logger.critical(
+            "Database connection failed on startup",
+            exc_info=True,
+            extra={"database_url": str(settings.DATABASE_URL)}
+        )
         raise RuntimeError("Database unavailable") from e
 
 
@@ -114,8 +125,8 @@ async def lifespan(app):
     try:
         await engine.dispose()
         logger.info("Database engine disposed on shutdown")
-    except Exception as e:
-        logger.warning(f"Error during DB shutdown: {e}")
+    except Exception as dispose_exc:
+        logger.warning("Error during DB shutdown", exc_info=dispose_exc)
 
 
 # ────────────────────────────────────────────────
