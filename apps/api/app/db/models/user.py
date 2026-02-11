@@ -12,14 +12,14 @@ from sqlalchemy import Boolean, ForeignKey, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.db.models import Base  # ← FIXED: use aggregator
 from app.db.models.mixins import UUIDMixin, SoftDeleteMixin, AuditMixin, SlugMixin
 from app.db.models.utils import generate_unique_slug
 
 from . import UserRole  # Enum from same package
 
 
-class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
+class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin):
     """
     Organization / Tenant
     - Root of multi-tenancy
@@ -48,7 +48,7 @@ class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         return f"<Org(id={self.id}, name={self.name}, slug={self.slug}, active={self.is_active})>"
 
 
-class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
+class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin):
     """
     User Account (multi-tenant)
     - Belongs to exactly one Org
@@ -140,4 +140,11 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
         return pyotp.totp.TOTP(self.totp_secret).provisioning_uri(
             name=self.email,
             issuer_name="CursorCode AI"
-            )
+        )
+
+    @classmethod
+    async def create_unique_slug(cls, email: str, db) -> str:
+        """Generate unique slug for this user based on email (future use)."""
+        # Use email prefix before @ as base
+        base = email.split("@")[0]
+        return await generate_unique_slug(base, cls, db=db)
