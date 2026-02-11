@@ -68,15 +68,6 @@ async def is_slug_unique(
     """
     Check if a slug is unique in the given model table.
     Optionally exclude a record ID (for updates).
-
-    Args:
-        slug: Slug to check
-        model_class: SQLAlchemy model class (e.g. Org, Project)
-        exclude_id: UUID of record to exclude (for update case)
-        db: Async DB session
-
-    Returns:
-        True if slug is unique, False if taken
     """
     stmt = select(model_class).where(model_class.slug == slug)
 
