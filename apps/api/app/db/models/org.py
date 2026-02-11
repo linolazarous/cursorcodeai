@@ -25,6 +25,7 @@ class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixi
     - Supports teams, soft-delete, and future team invites
     """
     __tablename__ = "orgs"
+    __table_args__ = {'extend_existing': True}  # ← FINAL FIX: prevents duplicate table error in SQLAlchemy
 
     # Core identity (slug from SlugMixin)
     name: Mapped[str] = mapped_column(
@@ -39,7 +40,7 @@ class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixi
         "User",
         back_populates="org",
         cascade="all, delete-orphan",
-        passive_deletes=True  # Consistent with projects
+        passive_deletes=True
     )
 
     projects: Mapped[List["Project"]] = relationship(
