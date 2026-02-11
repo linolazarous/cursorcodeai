@@ -15,13 +15,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.base import BaseHTTPMiddleware
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import insert
 
 from app.core.config import settings
-from app.db.session import lifespan, get_db  # DB startup + per-request session
-from app.db.models import User, Org, Project, Plan, AuditLog  # Correct model imports
+from app.db.session import lifespan, get_db
+from app.db.models import User, Org, Project, Plan, AuditLog
 from app.routers import (
     auth,
     orgs,
@@ -88,8 +87,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Security Headers (CSP, HSTS, etc.)
-app.add_middleware(BaseHTTPMiddleware, dispatch=add_security_headers)
+# 2. Security Headers (CSP, HSTS, etc.) — using decorator style
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    response = await call_next(request)
+    add_security_headers(request, response)  # Apply headers to response
+    return response
 
 # 3. Request Logging + Prometheus Metrics
 @app.middleware("http")
