@@ -13,7 +13,7 @@ from sqlalchemy import Boolean, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, TimestampMixin
+from app.db.models import Base  # ← FIXED: use aggregator
 from app.db.models.mixins import UUIDMixin, SoftDeleteMixin, AuditMixin
 from app.db.models.utils import generate_unique_slug
 
@@ -97,8 +97,8 @@ class Plan(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
     #     Integer, nullable=True, comment="Max concurrent projects"
     # )
 
-    # Lifecycle (from SoftDeleteMixin)
-    # deleted_at already inherited
+    # Lifecycle (inherited from SoftDeleteMixin)
+    # deleted_at already present
 
     def __repr__(self) -> str:
         price = f"${self.price_usd:.2f}" if self.price_usd_cents else "$0.00"
