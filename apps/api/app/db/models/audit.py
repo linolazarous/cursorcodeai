@@ -13,7 +13,7 @@ from sqlalchemy import String, Text, JSONB, func, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, TimestampMixin
+from app.db.models import Base  # ← FIXED: use aggregator
 from app.db.models.mixins import UUIDMixin, SoftDeleteMixin, AuditMixin
 
 
@@ -79,8 +79,8 @@ class AuditLog(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
         comment="Correlation ID (X-Request-ID) for tracing"
     )
 
-    # Timestamps & Soft Delete (from TimestampMixin + SoftDeleteMixin)
-    # created_at, updated_at, deleted_at already inherited
+    # Timestamps & Soft Delete (inherited from TimestampMixin + SoftDeleteMixin)
+    # created_at, updated_at, deleted_at already present
 
     def __repr__(self) -> str:
         fields = [f"id={self.id}", f"action={self.action!r}"]
