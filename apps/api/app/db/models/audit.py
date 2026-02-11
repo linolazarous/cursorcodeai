@@ -13,8 +13,8 @@ from sqlalchemy import String, Text, JSONB, func, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.models import Base  # ← FIXED: use aggregator
-from app.db.models.mixins import UUIDMixin, SoftDeleteMixin, AuditMixin
+from app.db.models import Base
+from app.db.models.mixins import UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin
 
 
 class AuditLog(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
@@ -27,12 +27,7 @@ class AuditLog(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
     """
 
     __tablename__ = "audit_logs"
-    __table_args__ = (
-        Index("ix_audit_user_id_action", "user_id", "action"),
-        Index("ix_audit_created_at", "created_at"),
-        Index("ix_audit_ip_address", "ip_address"),
-        {'extend_existing': True},
-    )
+    __table_args__ = {'extend_existing': True}  # ← FINAL FIX: prevents duplicate table error in SQLAlchemy
 
     # What happened
     action: Mapped[str] = mapped_column(
