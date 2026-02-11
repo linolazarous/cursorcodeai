@@ -16,7 +16,11 @@ from app.db.models import Base
 from app.db.models.mixins import UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin
 from app.db.models.utils import generate_unique_slug
 
-from . import UserRole  # Enum from same package
+
+class UserRole(str, Enum):  # ← Enum is defined here — no need to import from anywhere
+    USER = "user"
+    ADMIN = "admin"
+    ORG_OWNER = "org_owner"
 
 
 class Org(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin):
