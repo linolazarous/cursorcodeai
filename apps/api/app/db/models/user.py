@@ -12,12 +12,14 @@ from sqlalchemy import Boolean, ForeignKey, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from enum import Enum  # ← FIXED: import Enum here
+
 from app.db.models import Base
 from app.db.models.mixins import UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin, SlugMixin
 from app.db.models.utils import generate_unique_slug
 
 
-class UserRole(str, Enum):  # ← Enum is defined here — no need to import from anywhere
+class UserRole(str, Enum):
     USER = "user"
     ADMIN = "admin"
     ORG_OWNER = "org_owner"
