@@ -246,4 +246,4 @@ async def test_webhook_connection(
         "status": "webhook endpoint reachable",
         "user": current_user.email,
         "timestamp": datetime.now(ZoneInfo("UTC")).isoformat()
-}
+    }
