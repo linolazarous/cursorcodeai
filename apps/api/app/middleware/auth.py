@@ -21,9 +21,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.security import create_access_token, create_refresh_token  # ← FIXED: from shared module
 from app.db.session import get_db
-from app.db.models.user import User                           # FIXED: correct path
-from app.routers.auth import create_access_token, create_refresh_token  # ADDED: required for refresh
+from app.db.models.user import User
 from app.services.logging import audit_log
 
 logger = logging.getLogger(__name__)
@@ -91,11 +91,11 @@ async def get_current_user(
 
     except jwt.ExpiredSignatureError:
         # Token expired → try to refresh
-        refreshed = await refresh_if_needed(request, None)  # response=None here, we'll set later if needed
+        refreshed = await refresh_if_needed(request, None)
         if not refreshed:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired and could not be refreshed")
         
-        # Re-fetch token from cookies after refresh (in case it was updated)
+        # Re-fetch token from cookies after refresh
         token = request.cookies.get("access_token")
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh failed")
@@ -194,7 +194,7 @@ async def refresh_if_needed(request: Request, response: Optional[Response] = Non
 
         # Create new tokens
         new_access = create_access_token(
-            {"sub": user_id, "type": "access"}  # Add other claims if needed
+            {"sub": user_id, "type": "access"}  # Add other claims if needed (email, roles, etc.)
         )
         new_refresh = create_refresh_token({"sub": user_id})
 
@@ -205,7 +205,6 @@ async def refresh_if_needed(request: Request, response: Optional[Response] = Non
             logger.info(f"Auto-refreshed tokens for user {user_id}")
         else:
             # If no response, we can't set cookies → but we can still return success
-            # (useful when called from dependency where response isn't available yet)
             logger.info(f"Refresh successful but no response object to set cookies for user {user_id}")
 
         return True
@@ -228,6 +227,9 @@ async def require_role(
     required_role: str,
     user: Annotated[AuthUser, Depends(get_current_user)]
 ) -> AuthUser:
+    """
+    Enforce specific role (e.g. 'admin', 'org_owner').
+    """
     if required_role not in user.roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
