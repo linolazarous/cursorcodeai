@@ -1,4 +1,3 @@
-# apps/api/app/db/models/audit.py
 """
 AuditLog model for CursorCode AI
 Immutable audit trail for compliance, security, and debugging.
@@ -9,8 +8,8 @@ Uses mixins from db/models/mixins.py for reusable patterns.
 from datetime import datetime
 from typing import Dict, Optional
 
-from sqlalchemy import String, Text, JSONB, func, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Text, func, Index
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models import Base
@@ -27,7 +26,7 @@ class AuditLog(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin, AuditMixin):
     """
 
     __tablename__ = "audit_logs"
-    __table_args__ = {'extend_existing': True}  # ← FINAL FIX: prevents duplicate table error in SQLAlchemy
+    __table_args__ = {'extend_existing': True}  # ← prevents duplicate table error in SQLAlchemy
 
     # What happened
     action: Mapped[str] = mapped_column(
