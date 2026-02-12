@@ -6,9 +6,7 @@ All endpoints require authentication.
 
 import logging
 from datetime import datetime
-from enum import Enum
 from typing import Annotated, Dict, Literal, Optional
-from zoneinfo import ZoneInfo
 
 from fastapi import (
     APIRouter,
@@ -24,11 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import Limiter
 
 import stripe
-from stripe.error import StripeError
+from stripe.error import StripeError, InvalidRequestError
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.middleware.auth import get_current_user, AuthUser, require_admin
+from app.middleware.auth import get_current_user, AuthUser
 from app.db.models.user import User
 from app.services.billing import (
     create_or_get_stripe_customer,
@@ -43,16 +41,12 @@ router = APIRouter(prefix="/billing", tags=["Billing"])
 
 security = HTTPBearer(auto_error=False)
 
-
-# ────────────────────────────────────────────────
 # Rate limiter: per authenticated user
-# ────────────────────────────────────────────────
 def billing_limiter_key(request: Request) -> str:
     user = getattr(request.state, "user", None)
     if user and hasattr(user, "id"):
         return str(user.id)
     return request.client.host  # fallback
-
 
 limiter = Limiter(key_func=billing_limiter_key)
 
@@ -62,7 +56,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY.get_secret_value()
 # ────────────────────────────────────────────────
 # Models
 # ────────────────────────────────────────────────
-class Plan(str, Enum):
+class Plan(str):
     starter = "starter"
     standard = "standard"
     pro = "pro"
@@ -72,18 +66,12 @@ class Plan(str, Enum):
 
 class CreateCheckoutSessionRequest(BaseModel):
     plan: Plan = Field(...)
-    success_url: str = Field(
-        default_factory=lambda: f"{settings.FRONTEND_URL}/billing/success"
-    )
-    cancel_url: str = Field(
-        default_factory=lambda: f"{settings.FRONTEND_URL}/billing"
-    )
+    success_url: str = Field(default_factory=lambda: f"{settings.FRONTEND_URL}/billing/success")
+    cancel_url: str = Field(default_factory=lambda: f"{settings.FRONTEND_URL}/billing")
 
 
 class BillingPortalRequest(BaseModel):
-    return_url: str = Field(
-        default_factory=lambda: f"{settings.FRONTEND_URL}/billing"
-    )
+    return_url: str = Field(default_factory=lambda: f"{settings.FRONTEND_URL}/billing")
 
 
 class UsageReportRequest(BaseModel):
@@ -117,10 +105,7 @@ async def create_billing_session(
 
         customer_id = await create_or_get_stripe_customer(user, db)
 
-        idempotency_key = (
-            f"checkout_{current_user.id}_{payload.plan}_"
-            f"{datetime.utcnow().timestamp()}"
-        )
+        idempotency_key = f"checkout_{current_user.id}_{payload.plan}_{datetime.utcnow().timestamp()}"
 
         session = await create_checkout_session(
             user=user,
@@ -147,14 +132,10 @@ async def create_billing_session(
 
     except StripeError as e:
         logger.error(f"Stripe error during checkout: {e}")
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Payment setup failed."
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment setup failed.")
     except Exception as e:
         logger.exception("Checkout session creation failed")
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal error"
-        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal error")
 
 
 # ────────────────────────────────────────────────
@@ -171,16 +152,12 @@ async def create_billing_portal(
     try:
         user = await db.get(User, current_user.id)
         if not user or not user.stripe_customer_id:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "No Stripe customer found."
-            )
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "No Stripe customer found.")
 
         session = stripe.billing_portal.Session.create(
             customer=user.stripe_customer_id,
             return_url=payload.return_url,
-            idempotency_key=(
-                f"portal_{current_user.id}_{datetime.utcnow().timestamp()}"
-            ),
+            idempotency_key=f"portal_{current_user.id}_{datetime.utcnow().timestamp()}",
         )
 
         audit_log.delay(
@@ -194,14 +171,10 @@ async def create_billing_portal(
 
     except StripeError as e:
         logger.error(f"Stripe portal error: {e}")
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Billing portal unavailable"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Billing portal unavailable")
     except Exception as e:
         logger.exception("Portal session creation failed")
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal error"
-        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal error")
 
 
 # ────────────────────────────────────────────────
@@ -234,7 +207,7 @@ async def report_grok_usage_endpoint(
     request: Request,
     payload: UsageReportRequest = Body(...),
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),  # ← default present – syntax error fixed
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         await report_usage(
@@ -259,9 +232,7 @@ async def report_grok_usage_endpoint(
 
     except Exception as e:
         logger.exception("Failed to report usage")
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, "Usage reporting failed"
-        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Usage reporting failed")
 
 
 # ────────────────────────────────────────────────
@@ -269,10 +240,10 @@ async def report_grok_usage_endpoint(
 # ────────────────────────────────────────────────
 @router.get("/webhook/test")
 async def test_webhook_connection(
-    current_user: Annotated[AuthUser, Depends(require_admin)],  # now imported
+    current_user: Annotated[AuthUser, Depends(require_admin)],
 ):
     return {
         "status": "webhook endpoint reachable",
         "user": current_user.email,
-        "timestamp": datetime.now(ZoneInfo("UTC")).isoformat(),
-        }
+        "timestamp": datetime.now(ZoneInfo("UTC")).isoformat()
+}
