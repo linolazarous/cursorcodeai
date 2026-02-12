@@ -1,4 +1,3 @@
-# apps/api/app/services/logging.py
 """
 Audit Logging Service - CursorCode AI
 Immutable, async, retryable audit trail for compliance & security.
@@ -14,10 +13,9 @@ from typing import Any, Dict, Optional
 from celery import shared_task
 from fastapi import Request
 from sqlalchemy import insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_factory
-from app.models.audit import AuditLog
+from app.db.models.audit import AuditLog  # ← assuming AuditLog is in db/models/audit.py
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +31,13 @@ logger = logging.getLogger(__name__)
 )
 async def audit_log_task(
     self,
+    action: str,                        # required - first
     user_id: Optional[str] = None,
-    action: str,
     metadata: Optional[Dict[str, Any]] = None,
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
     request_id: Optional[str] = None,
-    event_id: Optional[str] = None,  # for deduplication / tracing
+    event_id: Optional[str] = None,     # for deduplication / tracing
 ):
     """
     Celery async task: Create immutable audit log entry.
@@ -48,13 +46,16 @@ async def audit_log_task(
     if event_id is None:
         event_id = str(uuid.uuid4())
 
+    if metadata is None:
+        metadata = {}
+
     try:
         async with async_session_factory() as db:
             stmt = insert(AuditLog).values(
                 event_id=event_id,
                 user_id=user_id,
                 action=action,
-                event_metadata=metadata or {},
+                event_metadata=metadata,
                 ip_address=ip_address,
                 user_agent=user_agent,
                 request_id=request_id,
@@ -67,7 +68,7 @@ async def audit_log_task(
             f"AUDIT [{event_id}]: {action}",
             extra={
                 "user_id": user_id,
-                "metadata": json.dumps(metadata or {}, default=str),
+                "metadata": json.dumps(metadata, default=str),
                 "ip": ip_address,
                 "user_agent": user_agent,
                 "request_id": request_id,
@@ -86,8 +87,8 @@ async def audit_log_task(
 # Public sync wrapper (queues Celery task)
 # ────────────────────────────────────────────────
 def audit_log(
+    action: str,                        # required - first
     user_id: Optional[str] = None,
-    action: str,
     metadata: Optional[Dict[str, Any]] = None,
     request: Optional[Request] = None,
     event_id: Optional[str] = None,
@@ -97,8 +98,8 @@ def audit_log(
     Use in middleware, routes, or services.
 
     Args:
-        user_id: Authenticated user ID (str)
         action: Descriptive action name (e.g. "login_success", "project_created")
+        user_id: Authenticated user ID (str)
         metadata: Optional dict of context (will be JSON-serialized)
         request: FastAPI Request (for IP, user-agent, request ID)
         event_id: Optional external trace ID (for correlation)
@@ -108,8 +109,8 @@ def audit_log(
     req_id = request.headers.get("X-Request-ID") if request else None
 
     audit_log_task.delay(
-        user_id=user_id,
         action=action,
+        user_id=user_id,
         metadata=metadata,
         ip_address=ip,
         user_agent=ua,
@@ -124,16 +125,16 @@ def audit_log(
 """
 # In login endpoint (auth.py):
 audit_log(
-    user_id=user.id,
     action="login_success",
+    user_id=user.id,
     metadata={"method": "password+2fa", "ip": request.client.host},
     request=request
 )
 
 # In project creation (projects.py):
 audit_log(
-    user_id=current_user.id,
     action="project_created",
+    user_id=current_user.id,
     metadata={
         "project_id": str(project.id),
         "title": project.title,
@@ -144,8 +145,8 @@ audit_log(
 
 # In middleware (after auth):
 audit_log(
-    user_id=user.id,
     action="api_access",
+    user_id=user.id,
     metadata={"path": request.url.path, "method": request.method},
     request=request
 )
