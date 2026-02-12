@@ -3,6 +3,13 @@ CursorCode AI FastAPI Application Entry Point
 Production-ready (February 2026): middleware stack, lifespan, observability, security.
 Supabase-ready: external managed Postgres, no auto-migrations, no engine dispose.
 Custom monitoring: structured logging + Supabase error table + Prometheus /metrics.
+
+REMINDER INTEGRATION NOTES:
+- Auth middleware is NOT global — use Depends(get_current_user) in protected routes
+- Rate limit middleware is global and user-aware (after auth sets current_user)
+- Middleware order: CORS → Security Headers → Metrics/Logging → Rate Limiting
+- If using Redis for rate limiting/Celery, uncomment Redis ping in /ready
+- Ensure Supabase table 'app_errors' exists for error logging (columns: level, message, stack, user_id, request_path, request_method, environment, extra JSONB)
 """
 
 import logging
@@ -15,11 +22,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import text
+from sqlalchemy import insert, text
 
 from app.core.config import settings
 from app.db.session import lifespan, get_db
-from app.db.models import User, Org, Project, Plan, AuditLog  # FIXED: correct import
+from app.db.models import User, Org, Project, Plan, AuditLog
 from app.routers import (
     auth,
     orgs,
@@ -29,13 +36,15 @@ from app.routers import (
     admin,
     monitoring,
 )
-from app.middleware.logging import log_requests_middleware
+# from app.middleware.auth import get_current_user  # Selective via Depends – NOT global
 from app.middleware.security import add_security_headers
 from app.middleware.rate_limit import (
     limiter,
     RateLimitMiddleware,
     rate_limit_exceeded_handler,
 )
+# Optional: if you have a dedicated request logger middleware
+# from app.middleware.logging import log_requests_middleware
 from app.monitoring.metrics import registry, http_requests_total, http_request_duration_seconds
 from prometheus_client import generate_latest
 
@@ -59,7 +68,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url=None,
-    lifespan=lifespan,  # Handles async DB/Redis init & cleanup
+    lifespan=lifespan,
     debug=settings.ENVIRONMENT == "development",
     openapi_tags=[
         {"name": "Authentication", "description": "User auth & sessions"},
@@ -117,10 +126,13 @@ async def metrics_middleware(request: Request, call_next):
     return response
 
 # 4. Rate Limiting (Redis + user-aware keys)
-# NOTE: Auth middleware is NOT global — use Depends(get_current_user) in protected routes
+# NOTE: Auth middleware is selective (Depends(get_current_user)) — rate limit uses current_user if set
 app.add_middleware(RateLimitMiddleware)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Optional: Add dedicated request logging middleware if needed
+# app.add_middleware(log_requests_middleware)  # Uncomment if you want extra logging
 
 # ────────────────────────────────────────────────
 # Routers
@@ -149,11 +161,11 @@ async def custom_exception_handler(request: Request, exc: Exception):
     """
     Custom handler:
     - Structured logging with context
-    - Store error in Supabase 'app_errors' table
+    - Store error in Supabase 'app_errors' table (ensure table exists!)
     - Return user-friendly 500 response
     """
     request_id = getattr(request.state, "request_id", "unknown")
-    # Note: user_id may not be set if exception happens before auth
+    # Try to get user_id from auth middleware (if it ran before exception)
     user_id = getattr(request.state, "user_id", None) or getattr(
         getattr(request.state, "current_user", None), "id", None
     )
@@ -173,7 +185,7 @@ async def custom_exception_handler(request: Request, exc: Exception):
         }
     )
 
-    # Log to Supabase 'app_errors' (async)
+    # Log to Supabase 'app_errors' (async) – REMINDER: table must exist
     try:
         async with get_db() as db:
             await db.execute(
@@ -216,15 +228,23 @@ async def health_check():
 @app.get("/ready", tags=["Health"])
 async def readiness_check():
     """
-    Readiness probe: DB ping (optional Redis ping if used).
+    Readiness probe: DB ping + optional Redis ping.
+    REMINDER: Uncomment Redis check below if rate limiting or Celery uses Redis.
     """
     try:
         async with get_db() as db:
             await db.execute(text("SELECT 1"))
-        # Optional Redis check
-        # from redis.asyncio import Redis
-        # redis = Redis.from_url(settings.REDIS_URL)
-        # await redis.ping()
+
+        # Optional Redis readiness check (uncomment if using Redis)
+        # try:
+        #     from redis.asyncio import Redis
+        #     redis = Redis.from_url(str(settings.REDIS_URL))
+        #     await redis.ping()
+        #     await redis.aclose()
+        # except Exception as redis_exc:
+        #     logger.warning("Redis readiness failed", exc_info=redis_exc)
+        #     return JSONResponse(status_code=503, content={"status": "not ready", "error": "Redis unavailable"})
+
         return {"status": "ready"}
     except Exception as e:
         logger.error("Readiness check failed", exc_info=True)
