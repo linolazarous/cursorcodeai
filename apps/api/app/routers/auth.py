@@ -8,9 +8,8 @@ import logging
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, List, Optional
+from typing import Optional
 
-import jwt
 import pyotp
 import qrcode
 from argon2 import PasswordHasher
@@ -35,9 +34,10 @@ from base64 import b64encode
 from uuid import UUID
 
 from app.core.config import settings
+from app.core.security import create_access_token, create_refresh_token  # ← NEW: shared helpers
 from app.db.session import get_db
 from app.middleware.auth import get_current_user, AuthUser
-from app.models.user import User
+from app.db.models.user import User  # ← FIXED: correct path
 from app.services.logging import audit_log
 from app.tasks.email import send_email_task
 
@@ -96,23 +96,6 @@ class QRResponse(BaseModel):
     qr_code_base64: str
     secret: str
     backup_codes: List[str]
-
-
-# ────────────────────────────────────────────────
-# JWT Helpers
-# ────────────────────────────────────────────────
-def create_access_token(data: dict) -> str:
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire, "type": "access"})
-    return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm="HS256")
-
-def create_refresh_token(data: dict) -> str:
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
-    return jwt.encode(to_encode, settings.JWT_REFRESH_SECRET, algorithm="HS256")
-
 
 # ────────────────────────────────────────────────
 # Signup - Heavily rate-limited
@@ -184,8 +167,8 @@ async def signup(
 # ────────────────────────────────────────────────
 @router.get("/verify", response_model=TokenResponse)
 async def verify_email(
-    response: Response,                     # required → first
-    token: str,                             # required → before defaults
+    response: Response,
+    token: str,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -228,7 +211,7 @@ async def verify_email(
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def login(
-    response: Response,                           # required → first
+    response: Response,
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
@@ -252,10 +235,6 @@ async def login(
 
     # 2FA check
     if user.totp_enabled:
-        # WARNING: OAuth2PasswordRequestForm does NOT have totp_code field by default
-        # You will get AttributeError here unless you:
-        #   A) Use a custom form model, or
-        #   B) Pass totp_code as separate query/body param
         if not hasattr(form_data, 'totp_code') or not form_data.totp_code:
             raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "2FA code required")
 
@@ -334,7 +313,7 @@ async def request_password_reset(
 # ────────────────────────────────────────────────
 @router.post("/reset-password/confirm", response_model=TokenResponse)
 async def confirm_password_reset(
-    response: Response,                     # required → first
+    response: Response,
     payload: ResetConfirm,
     db: AsyncSession = Depends(get_db)
 ):
