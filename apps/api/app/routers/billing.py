@@ -88,7 +88,7 @@ class BillingStatusResponse(BaseModel):
 
 
 # ────────────────────────────────────────────────
-# Create Checkout Session (subscribe / upgrade plan)
+# Create Checkout Session
 # ────────────────────────────────────────────────
 @router.post("/create-checkout-session", response_model=dict[str, str])
 @limiter.limit("5/minute")
@@ -98,10 +98,6 @@ async def create_billing_session(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Generate Stripe Checkout session for subscription or plan upgrade.
-    Returns session URL to redirect the user.
-    """
     try:
         user = await db.get(User, current_user.id)
         if not user:
@@ -136,17 +132,14 @@ async def create_billing_session(
 
     except StripeError as e:
         logger.error(f"Stripe error during checkout: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Payment setup failed. Please try again or contact support."
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Payment setup failed.")
     except Exception as e:
         logger.exception("Checkout session creation failed")
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal error")
 
 
 # ────────────────────────────────────────────────
-# Customer Portal (manage subscriptions, payment methods)
+# Customer Portal
 # ────────────────────────────────────────────────
 @router.post("/portal", response_model=dict[str, str])
 @limiter.limit("5/minute")
@@ -156,16 +149,10 @@ async def create_billing_portal(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Create Stripe Customer Portal session for managing billing.
-    """
     try:
         user = await db.get(User, current_user.id)
         if not user or not user.stripe_customer_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No Stripe customer found. Create a subscription first."
-            )
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "No Stripe customer found.")
 
         session = stripe.billing_portal.Session.create(
             customer=user.stripe_customer_id,
@@ -191,16 +178,13 @@ async def create_billing_portal(
 
 
 # ────────────────────────────────────────────────
-# Get current plan & credits (for dashboard)
+# Get current billing status
 # ────────────────────────────────────────────────
 @router.get("/status", response_model=BillingStatusResponse)
 async def get_billing_status(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Returns user's current plan, credits, and subscription status.
-    """
     user = await db.get(User, current_user.id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -215,7 +199,7 @@ async def get_billing_status(
 
 
 # ────────────────────────────────────────────────
-# Report Grok usage (called from orchestrator after agent run)
+# Report Grok usage (internal)
 # ────────────────────────────────────────────────
 @router.post("/usage/report")
 @limiter.limit("20/minute")
@@ -225,10 +209,6 @@ async def report_grok_usage_endpoint(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Reports Grok token usage to Stripe (metered billing).
-    Called internally by orchestration after each agent step.
-    """
     try:
         await report_usage(
             user_id=current_user.id,
@@ -256,16 +236,12 @@ async def report_grok_usage_endpoint(
 
 
 # ────────────────────────────────────────────────
-# Webhook confirmation test endpoint (admin-only debug)
+# Webhook test (admin debug)
 # ────────────────────────────────────────────────
 @router.get("/webhook/test")
 async def test_webhook_connection(
     current_user: Annotated[AuthUser, Depends(require_admin)],
 ):
-    """
-    Simple endpoint to verify webhook URL is reachable from Stripe.
-    Admin-only for security.
-    """
     return {
         "status": "webhook endpoint reachable",
         "user": current_user.email,
