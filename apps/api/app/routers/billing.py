@@ -1,4 +1,3 @@
-# apps/api/app/routers/billing.py
 """
 Billing Router - CursorCode AI
 Handles Stripe checkout, subscription management, credit usage, and billing portal.
@@ -7,7 +6,7 @@ All endpoints require authentication.
 
 import logging
 from datetime import datetime
-from typing import Annotated, Dict, Literal
+from typing import Annotated, Dict, Literal, Optional
 
 from fastapi import (
     APIRouter,
@@ -28,7 +27,7 @@ from stripe.error import StripeError, InvalidRequestError
 from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import get_current_user, AuthUser
-from app.models.user import User
+from app.db.models.user import User                  # ← FIXED: correct path
 from app.services.billing import (
     create_or_get_stripe_customer,
     create_checkout_session,
@@ -57,7 +56,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY.get_secret_value()
 # ────────────────────────────────────────────────
 # Models
 # ────────────────────────────────────────────────
-class Plan(str, Enum):
+class Plan(str):
     starter = "starter"
     standard = "standard"
     pro = "pro"
