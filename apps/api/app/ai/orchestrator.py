@@ -1,395 +1,329 @@
-# apps/api/app/ai/orchestrator.py
 """
-Core AI Agent Orchestration - CursorCode AI
-LangGraph-based multi-agent system powered by xAI Grok (multi-model routing).
-Handles: architecture → frontend/backend → security/qa → devops → deploy.
-With tools, RAG/memory, credit metering, email notifications.
-Now supports real-time token streaming for frontend display using raw httpx.
+Organizations Router - CursorCode AI
+Manages organizations (tenants): CRUD + switching.
+Multi-tenant foundation: all projects/users scoped to org.
+Only org_owners/admins can manage their org.
 """
 
 import logging
-import asyncio
-from typing import TypedDict, Annotated, Sequence, Dict, Any, List, AsyncGenerator
-from uuid import uuid4
+from datetime import datetime
+from typing import Annotated, Optional, Dict
+from uuid import UUID
 
-from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolNode
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+    Request,
+    Response,
+)
+from fastapi.security import HTTPBearer
+from pydantic import BaseModel, Field
+from sqlalchemy import select, update, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.config import settings
-from app.db.session import async_session_factory
-from app.models.project import Project, ProjectStatus
-from app.services.billing import deduct_credits, refund_credits
-from app.services.email import send_deployment_success_email
+from app.db.session import get_db
+from app.middleware.auth import get_current_user, AuthUser, require_org_owner
+from app.db.models.user import User        # ← FIXED: correct path
+from app.db.models.org import Org          # ← FIXED: correct path
 from app.services.logging import audit_log
-from app.tasks.metering import report_grok_usage
-from .nodes import agent_node  # Per-agent node factory (non-streaming fallback)
-from .tools import tools       # All available tools
-from .llm import stream_routed_llm  # Raw streaming LLM from llm.py
 
 logger = logging.getLogger(__name__)
 
-# ────────────────────────────────────────────────
-# Agent State
-# ────────────────────────────────────────────────
-class AgentState(TypedDict):
-    project_id: str
-    user_id: str
-    org_id: str
-    messages: Annotated[Sequence[BaseMessage], "add_messages"]
-    prompt: str
-    architecture: Dict[str, Any] | None
-    frontend_code: str | None
-    backend_code: str | None
-    tests: List[str] | None
-    deployment_scripts: str | None
-    errors: List[str]
-    memory: Dict[str, Any]  # RAG results
-    total_tokens_used: int = 0  # For metering
+router = APIRouter(prefix="/orgs", tags=["Organizations"])
+
+security = HTTPBearer(auto_error=False)
+
+# Rate limiter: 5 actions per minute per authenticated user
+limiter = Limiter(key_func=lambda r: r.state.user_id if hasattr(r.state, "user_id") else get_remote_address())
 
 
-# ────────────────────────────────────────────────
-# RAG Helper (pgvector)
-# ────────────────────────────────────────────────
-async def get_project_memory(prompt: str, org_id: str) -> Dict:
-    try:
-        async with async_session_factory() as db:
-            embedding = [0.0] * 1536
-            result = await db.execute(
-                """
-                SELECT content, metadata, 1 - (embedding <=> :emb) as similarity
-                FROM embeddings
-                WHERE org_id = :org_id
-                ORDER BY embedding <=> :emb
-                LIMIT 3
-                """,
-                {"emb": embedding, "org_id": org_id}
-            )
-            rows = result.fetchall()
-            return {
-                "similar_projects": [
-                    {"content": r[0], "metadata": r[1], "similarity": r[2]}
-                    for r in rows
-                ]
-            }
-    except Exception as e:
-        logger.exception("RAG retrieval failed")
-        return {"similar_projects": []}
+class OrgCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=255, description="Organization name")
+    slug: Optional[str] = Field(None, min_length=3, max_length=100, description="Unique slug (auto-generated if empty)")
 
 
-# ────────────────────────────────────────────────
-# Tool Node
-# ────────────────────────────────────────────────
-tool_node = ToolNode(tools)
+class OrgUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=255)
+    slug: Optional[str] = Field(None, min_length=3, max_length=100)
 
 
-# ────────────────────────────────────────────────
-# Conditional Routing
-# ────────────────────────────────────────────────
-def should_continue(state: AgentState) -> str:
-    if state["errors"]:
-        return "error_handler"
-    last_msg = state["messages"][-1]
-    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-        return "tools"
-    return "next"
+class OrgOut(BaseModel):
+    id: UUID
+    name: str
+    slug: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    member_count: int = 0
+    is_active: bool = False  # Whether this is the user's current org
+
+    class Config:
+        from_attributes = True
 
 
-# ────────────────────────────────────────────────
-# Error Handler Node
-# ────────────────────────────────────────────────
-async def error_handler(state: AgentState) -> Dict:
-    logger.error(f"Project {state['project_id']} failed: {state['errors']}")
-
-    async with async_session_factory() as db:
-        await refund_credits(
-            user_id=state["user_id"],
-            amount=10,
-            reason="Project orchestration failed",
-            db=db,
-        )
-        project = await db.get(Project, state["project_id"])
-        if project:
-            project.status = ProjectStatus.FAILED
-            project.error_message = "\n".join(state["errors"])
-            await db.commit()
-
-    asyncio.create_task(
-        send_deployment_success_email(
-            email="user_email_placeholder",
-            project_title="Failed Project",
-            deploy_url="N/A",
-        )
-    )
-
-    return {"messages": [AIMessage(content="Build failed due to errors")]}
-
-
-# ────────────────────────────────────────────────
-# Build Graph (non-streaming fallback – still used in legacy Celery)
-# ────────────────────────────────────────────────
-def build_agent_graph():
-    graph = StateGraph(AgentState)
-
-    async def rag_inject(state: AgentState):
-        memory = await get_project_memory(state["prompt"], state["org_id"])
-        return {
-            "memory": memory,
-            "messages": [HumanMessage(content=state["prompt"])]
-        }
-
-    graph.add_node("rag_inject", rag_inject)
-
-    # Agent nodes (use raw streaming under the hood for consistency)
-    async def run_agent_step(state: AgentState, agent_type: str):
-        system_prompt = f"Act as {agent_type} agent. Follow instructions precisely."
-        full_messages = [{"role": "system", "content": system_prompt}] + [
-            {"role": m.type, "content": m.content} for m in state["messages"]
-        ]
-
-        full_response = ""
-        async for chunk in stream_routed_llm(
-            agent_type=agent_type,
-            messages=full_messages,
-            user_tier="starter",  # Replace with real user_tier from auth
-            task_complexity="medium",
-            tools=tools,  # or agent-specific subset
-        ):
-            full_response += chunk
-
-        return {
-            "messages": state["messages"] + [AIMessage(content=full_response)]
-        }
-
-    graph.add_node("architect", lambda s: run_agent_step(s, "architect"))
-    graph.add_node("frontend", lambda s: run_agent_step(s, "frontend"))
-    graph.add_node("backend", lambda s: run_agent_step(s, "backend"))
-    graph.add_node("security", lambda s: run_agent_step(s, "security"))
-    graph.add_node("qa", lambda s: run_agent_step(s, "qa"))
-    graph.add_node("devops", lambda s: run_agent_step(s, "devops"))
-
-    graph.add_node("tools", tool_node)
-    graph.add_node("error_handler", error_handler)
-
-    graph.set_entry_point("rag_inject")
-    graph.add_edge("rag_inject", "architect")
-
-    for agent in ["architect", "frontend", "backend", "security", "qa", "devops"]:
-        graph.add_conditional_edges(
-            agent,
-            should_continue,
-            {"tools": "tools", "next": "next_agent", "error_handler": "error_handler"}
-        )
-        graph.add_edge("tools", agent)
-
-    graph.add_edge("devops", END)
-
-    return graph.compile()
-
-
-# ────────────────────────────────────────────────
-# Streaming Orchestration (main public API for frontend real-time)
-# ────────────────────────────────────────────────
-async def stream_orchestration(
-    project_id: str,
-    prompt: str,
-    user_id: str,
-    org_id: str,
-    user_tier: str = "starter",
-) -> AsyncGenerator[str, None]:
-    """
-    Async generator that streams tokens as the full orchestration runs.
-    Yields real-time chunks from each agent's response.
-    """
-    estimated_cost = 10
-
-    async with async_session_factory() as db:
-        success, msg = await deduct_credits(
-            user_id=user_id,
-            amount=estimated_cost,
-            reason=f"Streaming orchestration: {prompt[:50]}...",
-            db=db,
-        )
-        if not success:
-            yield f"[ERROR] Insufficient credits: {msg}"
-            return
-
-        graph = build_agent_graph()
-        config = {"configurable": {"thread_id": project_id}}
-
-        initial_state = AgentState(
-            project_id=project_id,
-            user_id=user_id,
-            org_id=org_id,
-            messages=[],
-            prompt=prompt,
-            errors=[],
-            total_tokens_used=0,
-        )
-
-        try:
-            current_state = initial_state
-            for node in ["rag_inject", "architect", "frontend", "backend", "security", "qa", "devops"]:
-                if node == "rag_inject":
-                    update = await rag_inject(current_state)
-                else:
-                    # Stream per agent
-                    yield f"[AGENT_START]{node.upper()}[/AGENT_START]"
-                    full_response = ""
-                    async for chunk in stream_routed_llm(
-                        agent_type=node,
-                        messages=[{"role": m.type, "content": m.content} for m in current_state["messages"]],
-                        user_tier=user_tier,
-                        task_complexity="medium",
-                    ):
-                        full_response += chunk
-                        yield chunk
-                    yield "[AGENT_END]"
-
-                    update = {"messages": current_state["messages"] + [AIMessage(content=full_response)]}
-
-                current_state.update(update)
-
-            # Final success handling
-            project = await db.get(Project, project_id)
-            if project:
-                project.status = ProjectStatus.COMPLETED
-                project.code_repo_url = "git-generated-repo-url"
-                project.deploy_url = "https://project.cursorcode.app"
-                await db.commit()
-
-            await send_deployment_success_email(
-                email="user_email_placeholder",
-                project_title=project.title or "New Project",
-                deploy_url=project.deploy_url,
-            )
-
-            total_tokens = current_state.get("total_tokens_used", 5000)
-            report_grok_usage.delay(
-                user_id=user_id,
-                tokens_used=total_tokens,
-                model_name="mixed_grok",
-            )
-
-            audit_log.delay(
-                user_id=user_id,
-                action="project_completed_stream",
-                metadata={"project_id": project_id, "tokens": total_tokens}
-            )
-
-            yield "[COMPLETE]"
-
-        except Exception as exc:
-            await refund_credits(user_id=user_id, amount=estimated_cost, reason="Streaming orchestration failed", db=db)
-            if project:
-                project.status = ProjectStatus.FAILED
-                project.error_message = str(exc)
-                await db.commit()
-
-            await send_email_task(
-                to="user_email_placeholder",
-                subject="Project Build Failed",
-                html=f"<p>Project {project_id} failed: {str(exc)}</p>",
-            )
-
-            yield f"[ERROR]{str(exc)}"
-            raise
-
-
-# ────────────────────────────────────────────────
-# Legacy non-streaming Celery task (for background / non-UI use)
-# ────────────────────────────────────────────────
-@shared_task(name="ai.run_agent_graph", bind=True, max_retries=3)
-def run_agent_graph_task(
-    self,
-    project_id: str,
-    prompt: str,
-    user_id: str,
-    org_id: str,
+@router.post(
+    "/",
+    response_model=OrgOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create new organization",
+)
+@limiter.limit("3/minute")
+async def create_org(
+    request: Request,
+    payload: OrgCreate,
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Legacy Celery task – non-streaming version.
-    Use stream_orchestration() for real-time UI streaming.
+    Create a new organization and assign current user as org_owner.
+    Slug is auto-generated if not provided.
     """
-    estimated_cost = 10
-
-    async def _run():
-        async with async_session_factory() as db:
-            success, msg = await deduct_credits(
-                user_id=user_id,
-                amount=estimated_cost,
-                reason=f"Project orchestration: {prompt[:50]}...",
-                db=db,
-            )
-            if not success:
-                await send_email_task(
-                    to="user_email_placeholder",
-                    subject="Insufficient Credits",
-                    html=f"<p>You have insufficient credits ({msg}). Please top up.</p>",
-                )
-                raise ValueError(msg)
-
-            graph = build_agent_graph()
-            config = {"configurable": {"thread_id": project_id}}
-
-            initial_state = AgentState(
-                project_id=project_id,
-                user_id=user_id,
-                org_id=org_id,
-                messages=[],
-                prompt=prompt,
-                errors=[],
-                total_tokens_used=0,
+    # Slug conflict check
+    if payload.slug:
+        existing = await db.scalar(select(Org).where(Org.slug == payload.slug))
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Slug already in use. Choose another or leave empty for auto-generation."
             )
 
-            try:
-                final_state = await graph.ainvoke(initial_state, config)
+    org = Org(
+        name=payload.name,
+        slug=payload.slug or f"org-{UUID().hex[:8]}",
+    )
+    db.add(org)
+    await db.flush()  # Get org.id
 
-                project = await db.get(Project, project_id)
-                if project:
-                    project.status = ProjectStatus.COMPLETED
-                    project.code_repo_url = "git-generated-repo-url"
-                    project.deploy_url = "https://project.cursorcode.app"
-                    await db.commit()
+    # Assign user as owner
+    user = await db.get(User, UUID(current_user.id))
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-                await send_deployment_success_email(
-                    email="user_email_placeholder",
-                    project_title=project.title or "New Project",
-                    deploy_url=project.deploy_url,
-                )
+    user.org_id = org.id
+    if "org_owner" not in user.roles:
+        user.roles.append("org_owner")
 
-                total_tokens = final_state.get("total_tokens_used", 5000)
-                report_grok_usage.delay(
-                    user_id=user_id,
-                    tokens_used=total_tokens,
-                    model_name="mixed_grok",
-                )
+    await db.commit()
+    await db.refresh(org)
+    await db.refresh(user)
 
-                audit_log.delay(
-                    user_id=user_id,
-                    action="project_completed",
-                    metadata={"project_id": project_id, "tokens": total_tokens}
-                )
+    audit_log.delay(
+        user_id=current_user.id,
+        action="org_created",
+        metadata={
+            "org_id": str(org.id),
+            "name": org.name,
+            "slug": org.slug,
+            "member_count": 1,
+        },
+        request=request,
+    )
 
-            except Exception as exc:
-                await refund_credits(
-                    user_id=user_id,
-                    amount=estimated_cost,
-                    reason="Orchestration failed",
-                    db=db,
-                )
-                if project:
-                    project.status = ProjectStatus.FAILED
-                    project.error_message = str(exc)
-                    await db.commit()
+    return OrgOut(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+        member_count=1,
+        is_active=True,
+    )
 
-                await send_email_task(
-                    to="user_email_placeholder",
-                    subject="Project Build Failed",
-                    html=f"<p>Project {project_id} failed: {str(exc)}</p>",
-                )
 
-                raise self.retry(exc=exc)
+@router.get(
+    "/",
+    response_model=list[OrgOut],
+    summary="List organizations current user belongs to",
+)
+async def list_orgs(
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all organizations the current user is a member of, with member counts.
+    """
+    stmt = (
+        select(Org)
+        .join(User, User.org_id == Org.id)
+        .where(User.id == UUID(current_user.id))
+        .order_by(Org.name)
+    )
+    result = await db.execute(stmt)
+    orgs_list = result.scalars().all()
 
-    asyncio.run(_run())
+    # Efficiently compute member counts
+    for org in orgs_list:
+        count_stmt = select(func.count(User.id)).where(User.org_id == org.id)
+        count = await db.scalar(count_stmt)
+        org.member_count = count or 0
+        org.is_active = str(org.id) == current_user.org_id
+
+    return orgs_list
+
+
+@router.get(
+    "/{org_id}",
+    response_model=OrgOut,
+    summary="Get organization details",
+)
+async def get_org(
+    org_id: UUID,
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieve organization details (must be a member).
+    """
+    org = await db.get(Org, org_id)
+    if not org:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+
+    if UUID(current_user.org_id) != org_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this organization")
+
+    count_stmt = select(func.count(User.id)).where(User.org_id == org_id)
+    count = await db.scalar(count_stmt)
+
+    return OrgOut(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+        member_count=count or 0,
+        is_active=str(org.id) == current_user.org_id,
+    )
+
+
+@router.patch(
+    "/{org_id}",
+    response_model=OrgOut,
+    summary="Update organization (name/slug)",
+)
+@limiter.limit("3/minute")
+async def update_org(
+    request: Request,
+    org_id: UUID,
+    payload: OrgUpdate,
+    current_user: Annotated[AuthUser, Depends(require_org_owner)],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update organization name or slug.
+    Only org_owner can modify.
+    """
+    org = await db.get(Org, org_id)
+    if not org or UUID(current_user.org_id) != org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+
+    if payload.name is not None:
+        org.name = payload.name
+
+    if payload.slug is not None:
+        existing = await db.scalar(
+            select(Org).where(Org.slug == payload.slug, Org.id != org_id)
+        )
+        if existing:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Slug already in use by another organization"
+            )
+        org.slug = payload.slug
+
+    await db.commit()
+    await db.refresh(org)
+
+    audit_log.delay(
+        user_id=current_user.id,
+        action="org_updated",
+        metadata={
+            "org_id": str(org_id),
+            "changes": payload.dict(exclude_unset=True)
+        },
+        request=request,
+    )
+
+    count_stmt = select(func.count(User.id)).where(User.org_id == org_id)
+    count = await db.scalar(count_stmt)
+
+    return OrgOut(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        created_at=org.created_at,
+        updated_at=org.updated_at,
+        member_count=count or 0,
+        is_active=True,
+    )
+
+
+@router.delete(
+    "/{org_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete organization",
+)
+@limiter.limit("1/minute")
+async def delete_org(
+    request: Request,
+    org_id: UUID,
+    current_user: Annotated[AuthUser, Depends(require_org_owner)],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Soft-delete organization (sets deleted_at).
+    Only org_owner can delete.
+    """
+    org = await db.get(Org, org_id)
+    if not org or UUID(current_user.org_id) != org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+
+    org.deleted_at = datetime.utcnow()
+    await db.commit()
+
+    audit_log.delay(
+        user_id=current_user.id,
+        action="org_deleted",
+        metadata={"org_id": str(org_id), "name": org.name},
+        request=request,
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/switch/{org_id}",
+    response_model=Dict[str, str],
+    summary="Switch active organization",
+)
+@limiter.limit("5/minute")
+async def switch_org(
+    request: Request,
+    org_id: UUID,
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Switch the user's active organization.
+    Future-proof for updating JWT claims on refresh.
+    """
+    membership = await db.scalar(
+        select(User).where(User.id == UUID(current_user.id), User.org_id == org_id)
+    )
+    if not membership:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not a member of this organization")
+
+    # TODO: In future — issue new JWT with updated org_id claim
+    # For now: just log the switch
+
+    audit_log.delay(
+        user_id=current_user.id,
+        action="org_switched",
+        metadata={"new_org_id": str(org_id)},
+        request=request,
+    )
+
+    return {"message": f"Switched to organization {org_id}"}
