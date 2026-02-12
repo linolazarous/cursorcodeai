@@ -31,11 +31,11 @@ from slowapi.util import get_remote_address
 from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import get_current_user, AuthUser
-from app.db.models.project import Project, ProjectStatus  # ← FIXED: correct path
+from app.db.models.project import Project, ProjectStatus  # correct path
 from app.services.billing import deduct_credits
 from app.services.email import send_deployment_success_email
 from app.services.logging import audit_log
-from app.ai.orchestrator import stream_orchestration  # ← Streaming function
+from app.ai.orchestrator import stream_orchestration  # streaming function
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 
 security = HTTPBearer(auto_error=False)
 
-# Rate limit: 5 projects per minute per user (not IP)
+# Rate limit: 5 projects per minute per user
 limiter = Limiter(key_func=lambda r: r.state.user_id if hasattr(r.state, "user_id") else get_remote_address())
 
 
@@ -76,7 +76,7 @@ class ProjectOut(BaseModel):
     "/",
     response_model=ProjectOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Create new AI-generated project (streaming via SSE)",
+    summary="Create new AI-generated project",
 )
 @limiter.limit("5/minute")
 async def create_project(
@@ -88,15 +88,12 @@ async def create_project(
 ):
     """
     Create a new project from prompt.
-    - Deducts credits
-    - Triggers agent orchestration
-    - Returns project metadata immediately
-    - Client can connect to /projects/{id}/stream for real-time tokens
+    Deducts credits, triggers orchestration, returns metadata.
+    Client can connect to /projects/{id}/stream for real-time progress.
     """
-    # Credit check & atomic deduction
     success, msg = await deduct_credits(
         user_id=current_user.id,
-        amount=10,  # TODO: make dynamic based on user_tier / complexity
+        amount=10,
         reason=f"Project creation: {payload.prompt[:50]}...",
         db=db,
     )
@@ -115,7 +112,6 @@ async def create_project(
     await db.commit()
     await db.refresh(project)
 
-    # Trigger background orchestration (non-streaming Celery fallback)
     background_tasks.add_task(
         run_agent_graph_task.delay,
         project_id=str(project.id),
@@ -124,7 +120,6 @@ async def create_project(
         org_id=current_user.org_id,
     )
 
-    # Audit
     audit_log.delay(
         user_id=current_user.id,
         action="project_created",
@@ -137,12 +132,11 @@ async def create_project(
         request=request,
     )
 
-    # Email notification (async)
     background_tasks.add_task(
         send_deployment_success_email,
         email=current_user.email,
         project_title=project.title or "Untitled Project",
-        deploy_url=None,  # Updated later
+        deploy_url=None,
     )
 
     return project
@@ -156,12 +150,12 @@ async def create_project(
 @limiter.limit("10/minute")
 async def stream_project(
     project_id: UUID,
+    request: Request,  # ← MUST be here for slowapi limiter
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
     """
     Server-Sent Events (SSE) endpoint for real-time token streaming.
-    Client connects here after creating a project.
     """
     project = await db.get(Project, project_id)
     if not project or project.user_id != UUID(current_user.id):
@@ -178,7 +172,7 @@ async def stream_project(
             prompt=project.prompt,
             user_id=current_user.id,
             org_id=current_user.org_id,
-            user_tier="starter",  # TODO: from user profile
+            user_tier="starter",
         ):
             yield f"data: {chunk}\n\n"
 
@@ -190,7 +184,7 @@ async def stream_project(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Important for Render/NGINX
+            "X-Accel-Buffering": "no",
         }
     )
 
