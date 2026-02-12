@@ -1,4 +1,3 @@
-# apps/api/app/routers/projects.py
 """
 Projects Router - CursorCode AI
 CRUD operations for AI-generated projects.
@@ -8,7 +7,7 @@ Supports real-time streaming via SSE for orchestration progress.
 
 import logging
 from datetime import datetime
-from typing import List, Annotated, Optional
+from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import (
@@ -32,7 +31,7 @@ from slowapi.util import get_remote_address
 from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import get_current_user, AuthUser
-from app.models.project import Project, ProjectStatus
+from app.db.models.project import Project, ProjectStatus  # ← FIXED: correct path
 from app.services.billing import deduct_credits
 from app.services.email import send_deployment_success_email
 from app.services.logging import audit_log
@@ -198,7 +197,7 @@ async def stream_project(
 
 @router.get(
     "/",
-    response_model=List[ProjectOut],
+    response_model=list[ProjectOut],
     summary="List user's projects (paginated)",
 )
 async def list_projects(
