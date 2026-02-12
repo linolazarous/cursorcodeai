@@ -27,7 +27,7 @@ from stripe.error import StripeError, InvalidRequestError
 from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import get_current_user, AuthUser
-from app.db.models.user import User                  # ← FIXED: correct path
+from app.db.models.user import User
 from app.services.billing import (
     create_or_get_stripe_customer,
     create_checkout_session,
@@ -90,7 +90,7 @@ class BillingStatusResponse(BaseModel):
 # ────────────────────────────────────────────────
 # Create Checkout Session (subscribe / upgrade plan)
 # ────────────────────────────────────────────────
-@router.post("/create-checkout-session", response_model=Dict[str, str])
+@router.post("/create-checkout-session", response_model=dict[str, str])
 @limiter.limit("5/minute")
 async def create_billing_session(
     request: Request,
@@ -107,10 +107,8 @@ async def create_billing_session(
         if not user:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-        # Get or create Stripe customer
         customer_id = await create_or_get_stripe_customer(user, db)
 
-        # Create checkout session with idempotency
         idempotency_key = f"checkout_{current_user.id}_{payload.plan}_{datetime.utcnow().timestamp()}"
 
         session = await create_checkout_session(
@@ -150,7 +148,7 @@ async def create_billing_session(
 # ────────────────────────────────────────────────
 # Customer Portal (manage subscriptions, payment methods)
 # ────────────────────────────────────────────────
-@router.post("/portal", response_model=Dict[str, str])
+@router.post("/portal", response_model=dict[str, str])
 @limiter.limit("5/minute")
 async def create_billing_portal(
     request: Request,
@@ -220,7 +218,7 @@ async def get_billing_status(
 # Report Grok usage (called from orchestrator after agent run)
 # ────────────────────────────────────────────────
 @router.post("/usage/report")
-@limiter.limit("20/minute")  # Higher limit for internal usage reporting
+@limiter.limit("20/minute")
 async def report_grok_usage_endpoint(
     request: Request,
     payload: UsageReportRequest = Body(...),
