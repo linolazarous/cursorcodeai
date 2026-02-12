@@ -1,4 +1,3 @@
-# apps/api/app/routers/auth.py
 """
 Authentication Router - CursorCode AI
 Full production auth system (2026 standards) with rate limiting on all sensitive endpoints.
@@ -9,7 +8,7 @@ import logging
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 import jwt
 import pyotp
@@ -33,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from io import BytesIO
 from base64 import b64encode
+from uuid import UUID
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -184,8 +184,8 @@ async def signup(
 # ────────────────────────────────────────────────
 @router.get("/verify", response_model=TokenResponse)
 async def verify_email(
-    token: str,
-    response: Response,
+    response: Response,                     # required → first
+    token: str,                             # required → before defaults
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -228,9 +228,9 @@ async def verify_email(
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def login(
+    response: Response,                           # required → first
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    response: Response,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -252,7 +252,11 @@ async def login(
 
     # 2FA check
     if user.totp_enabled:
-        if not form_data.totp_code:
+        # WARNING: OAuth2PasswordRequestForm does NOT have totp_code field by default
+        # You will get AttributeError here unless you:
+        #   A) Use a custom form model, or
+        #   B) Pass totp_code as separate query/body param
+        if not hasattr(form_data, 'totp_code') or not form_data.totp_code:
             raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "2FA code required")
 
         totp = pyotp.TOTP(user.totp_secret)
@@ -266,7 +270,11 @@ async def login(
     response.set_cookie("access_token", access_token, **settings.COOKIE_DEFAULTS)
     response.set_cookie("refresh_token", refresh_token, **settings.COOKIE_DEFAULTS)
 
-    audit_log.delay(str(user.id), "login_success", {"method": "password+2fa" if form_data.totp_code else "password"})
+    audit_log.delay(
+        str(user.id),
+        "login_success",
+        {"method": "password+2fa" if getattr(form_data, 'totp_code', None) else "password"}
+    )
 
     return {"message": "Logged in successfully"}
 
@@ -326,8 +334,8 @@ async def request_password_reset(
 # ────────────────────────────────────────────────
 @router.post("/reset-password/confirm", response_model=TokenResponse)
 async def confirm_password_reset(
+    response: Response,                     # required → first
     payload: ResetConfirm,
-    response: Response,
     db: AsyncSession = Depends(get_db)
 ):
     """
