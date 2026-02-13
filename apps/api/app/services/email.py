@@ -1,8 +1,8 @@
-# apps/api/app/services/email.py
 """
 Resend Email Service - CursorCode AI
 Async, retryable email sending with Resend API.
-Handles: verification, password reset, low credits, deployment events, 2FA notifications.
+Handles: verification, password reset, low credits, deployment events, 2FA notifications,
+subscription status changes.
 Production-ready (February 2026): audit logging, error handling, background queuing.
 """
 
@@ -259,7 +259,7 @@ def send_2fa_disabled_email(
     <p>If this was not you, secure your account immediately.</p>
     <br>
     <p>Best regards,<br>CursorCode AI Team</p>
-    """
+    """ 
 
     task_kwargs = {
         "to": email,
@@ -299,3 +299,53 @@ def send_2fa_login_alert(
         background_tasks.add_task(send_email_task.delay, **task_kwargs)
     else:
         send_email_task.delay(**task_kwargs)
+
+
+# ────────────────────────────────────────────────
+# NEW: Subscription status change notification
+# ────────────────────────────────────────────────
+def send_subscription_status_email(
+    email: str,
+    status: str,                     # e.g. "activated", "renewed", "past_due", "canceled"
+    plan: str,
+    credits_added: int = 0,
+    subscription_id: Optional[str] = None,
+    background_tasks: Optional[BackgroundTasks] = None,
+):
+    """
+    Notify user about subscription status change (activated, renewed, past due, canceled, etc.).
+    Used by billing webhook tasks.
+    """
+    status_title = status.replace("_", " ").title()
+    subject = f"Your CursorCode AI Subscription - {status_title}"
+
+    html = f"""
+    <h2>Subscription {status_title}</h2>
+    <p>Your subscription has been <strong>{status}</strong> to the <strong>{plan.capitalize()}</strong> plan.</p>
+    """
+
+    if credits_added > 0:
+        html += f"<p>You received <strong>{credits_added}</strong> credits for this period.</p>"
+
+    if subscription_id:
+        html += f"<p>Subscription ID: <code>{subscription_id}</code></p>"
+
+    html += f"""
+    <p><a href="{settings.FRONTEND_URL}/billing" style="padding: 10px 20px; background: #0066cc; color: white; text-decoration: none; border-radius: 5px;">Manage Billing</a></p>
+    <p>If you did not expect this change, contact support immediately.</p>
+    <br>
+    <p>Best regards,<br>CursorCode AI Team</p>
+    """
+
+    task_kwargs = {
+        "to": email,
+        "subject": subject,
+        "html": html,
+    }
+
+    if background_tasks:
+        background_tasks.add_task(send_email_task.delay, **task_kwargs)
+    else:
+        send_email_task.delay(**task_kwargs)
+
+    logger.info(f"Queued subscription status email to {email}: {status}")
