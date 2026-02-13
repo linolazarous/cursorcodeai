@@ -1,8 +1,7 @@
-# apps/api/app/routers/webhook.py
 """
 Stripe Webhook Router - CursorCode AI
 Production-hardened endpoint for all Stripe events (subscriptions, invoices, payments).
-February 10, 2026 standards: idempotency, encryption, queuing, observability, security.
+February 13, 2026 standards: idempotency, encryption, queuing, observability, security.
 """
 
 import logging
@@ -23,7 +22,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.services.billing import (
+from app.tasks.billing import (
     handle_checkout_session_completed_task,
     handle_invoice_paid_task,
     handle_invoice_payment_failed_task,
@@ -45,11 +44,11 @@ STRIPE_WEBHOOK_SECRET = settings.STRIPE_WEBHOOK_SECRET.get_secret_value()
 
 redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 IDEMPOTENCY_TTL = 60 * 60 * 24 * 7      # 7 days
-DEBUG_PAYLOAD_TTL = 60 * 60 * 24        # 1 day
+DEBUG_PAYLOAD_TTL = 60 * 60 * 24        # 1 day for debug
 
 fernet = Fernet(settings.FERNET_KEY)    # 32-byte key for encryption
 
-# Rate limiter: high burst for Stripe, per IP (Stripe IPs are known)
+# Rate limiter: high burst for Stripe, per IP
 limiter = Limiter(key_func=lambda r: r.client.host)
 
 
@@ -60,15 +59,16 @@ limiter = Limiter(key_func=lambda r: r.client.host)
 @limiter.limit("200/minute")
 async def stripe_webhook(
     request: Request,
-    db: AsyncSession = Depends(get_db),
     background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Main Stripe webhook handler.
     - Verifies signature
-    - Checks idempotency
-    - Queues event processing async
-    - Always returns 200 immediately
+    - Checks idempotency (Redis)
+    - Stores encrypted payload for debugging (short TTL)
+    - Queues async event processing (non-blocking)
+    - Always returns 200 immediately (Stripe requirement)
     """
     request_id = str(uuid.uuid4())
     start_time = time.time()
@@ -96,7 +96,7 @@ async def stripe_webhook(
             payload_bytes,
             sig_header,
             STRIPE_WEBHOOK_SECRET,
-            tolerance=300,  # 5 min clock drift
+            tolerance=300,  # 5 min clock drift allowed
         )
     except ValueError as e:
         logger.error(f"[{request_id}] Invalid payload: {e}")
@@ -151,10 +151,8 @@ async def stripe_webhook(
                 await handle_subscription_updated_task.delay(data_object)
             elif event_type == "customer.subscription.deleted":
                 await handle_subscription_deleted_task.delay(data_object)
-            elif event_type in ["customer.created", "customer.updated"]:
-                logger.info(f"[{request_id}] Customer event: {event_type} - {data_object['id']}")
             else:
-                logger.info(f"[{request_id}] Ignored event: {event_type}")
+                logger.info(f"[{request_id}] Ignored webhook event: {event_type}")
 
             # Audit (queued)
             await audit_log.delay(
@@ -187,4 +185,4 @@ async def stripe_webhook(
     return JSONResponse(
         content={"status": "received", "request_id": request_id},
         headers={"X-Request-ID": request_id}
-        )
+    )
