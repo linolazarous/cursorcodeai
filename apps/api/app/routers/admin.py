@@ -24,7 +24,7 @@ from sqlalchemy import select, func, desc, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import DBSession, CurrentAdminUser, OptionalCurrentUser  # ← use centralized deps
+from app.core.deps import DBSession, CurrentAdminUser, OptionalCurrentUser
 from app.db.models.user import User
 from app.db.models.org import Org
 from app.db.models.project import Project, ProjectStatus
@@ -326,10 +326,10 @@ async def toggle_maintenance_mode(
 # ────────────────────────────────────────────────
 @router.post("/monitoring/frontend-error")
 async def log_frontend_error(
-    request: Request,  # ← added for IP logging
-    data: Dict[str, Any] = Body(...),
-    current_user: OptionalCurrentUser = None,  # optional
-    db: DBSession,
+    request: Request,                  # required - first (for IP)
+    data: Dict[str, Any] = Body(...),  # has default
+    current_user: OptionalCurrentUser = None,  # has default (optional)
+    db: DBSession,                     # required - last default is ok
 ):
     """
     Endpoint for frontend to report JavaScript/runtime errors.
