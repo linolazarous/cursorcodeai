@@ -12,9 +12,6 @@ from zoneinfo import ZoneInfo
 
 from fastapi import (
     APIRouter,
-    Depends,
-    HTTPException,
-    status,
     Query,
     Body,
     Request,
@@ -24,7 +21,11 @@ from sqlalchemy import select, func, desc, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import DBSession, CurrentAdminUser, OptionalCurrentUser
+from app.core.deps import (
+    DBSession,
+    CurrentAdminUser,
+    OptionalCurrentUser,
+)
 from app.db.models.user import User
 from app.db.models.org import Org
 from app.db.models.project import Project, ProjectStatus
