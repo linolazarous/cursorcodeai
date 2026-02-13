@@ -17,9 +17,11 @@ from slowapi import Limiter
 from stripe.error import SignatureVerificationError, StripeError
 import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import insert
 
 from app.core.config import settings
-from app.core.deps import DBSession  # ← Centralized DB dependency
+from app.core.deps import DBSession
+from app.core.redis import get_redis_client  # ← Centralized Redis client
 from app.tasks.billing import (
     handle_checkout_session_completed_task,
     handle_invoice_paid_task,
@@ -29,18 +31,18 @@ from app.tasks.billing import (
     handle_invoice_payment_succeeded_task,
 )
 from app.services.logging import audit_log
+from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhook", tags=["Webhooks"])
 
 # ────────────────────────────────────────────────
-# Clients & Config
+# Config (no global client — use context manager)
 # ────────────────────────────────────────────────
 stripe.api_key = settings.STRIPE_SECRET_KEY.get_secret_value()
 STRIPE_WEBHOOK_SECRET = settings.STRIPE_WEBHOOK_SECRET.get_secret_value()
 
-redis_client = Redis.from_url(str(settings.REDIS_URL), decode_responses=True)
 IDEMPOTENCY_TTL = 60 * 60 * 24 * 7      # 7 days
 DEBUG_PAYLOAD_TTL = 60 * 60 * 24        # 1 day for debug
 
@@ -58,7 +60,7 @@ limiter = Limiter(key_func=lambda r: r.client.host)
 async def stripe_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    db: DBSession,  # ← Now uses centralized dependency from deps.py
+    db: DBSession,
 ):
     """
     Main Stripe webhook handler.
@@ -109,11 +111,12 @@ async def stripe_webhook(
     # 3. Idempotency check (Redis)
     # ────────────────────────────────────────────────
     idempotency_key = f"stripe:processed:{event_id}"
-    if await redis_client.get(idempotency_key):
-        logger.info(f"[{request_id}] Duplicate event {event_id} - already processed")
-        return {"status": "duplicate", "request_id": request_id}
+    async with get_redis_client() as redis:
+        if await redis.get(idempotency_key):
+            logger.info(f"[{request_id}] Duplicate event {event_id} - already processed")
+            return {"status": "duplicate", "request_id": request_id}
 
-    await redis_client.set(idempotency_key, "processed", ex=IDEMPOTENCY_TTL)
+        await redis.set(idempotency_key, "processed", ex=IDEMPOTENCY_TTL)
 
     # ────────────────────────────────────────────────
     # 4. Encrypt & store raw payload for debugging (short TTL)
@@ -121,7 +124,8 @@ async def stripe_webhook(
     try:
         encrypted_payload = fernet.encrypt(payload_bytes)
         debug_key = f"stripe:debug:{event_id}"
-        await redis_client.set(debug_key, encrypted_payload.hex(), ex=DEBUG_PAYLOAD_TTL)
+        async with get_redis_client() as redis:
+            await redis.set(debug_key, encrypted_payload.hex(), ex=DEBUG_PAYLOAD_TTL)
         logger.debug(f"[{request_id}] Debug payload stored (encrypted)")
     except InvalidToken as e:
         logger.error(f"[{request_id}] Fernet encryption failed: {e}")
