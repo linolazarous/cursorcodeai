@@ -1,3 +1,4 @@
+# apps/api/app/routers/admin.py
 """
 Admin Router - CursorCode AI
 Protected endpoints for platform administrators only.
@@ -10,12 +11,7 @@ from datetime import datetime, timedelta
 from typing import Annotated, Optional, Dict, Any
 from zoneinfo import ZoneInfo
 
-from fastapi import (
-    APIRouter,
-    Query,
-    Body,
-    Request,
-)
+from fastapi import APIRouter, Query, Body, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -224,10 +220,10 @@ async def get_failed_projects(
 # ────────────────────────────────────────────────
 @router.post("/users/{user_id}/credits/adjust")
 async def adjust_user_credits(
-    user_id: str,
-    payload: CreditAdjust = Body(...),
     current_user: CurrentAdminUser,
     db: DBSession,
+    user_id: str,
+    payload: CreditAdjust = Body(...),
 ):
     target = await db.get(User, user_id)
     if not target:
@@ -270,8 +266,8 @@ async def adjust_user_credits(
 # ────────────────────────────────────────────────
 @router.post("/maintenance")
 async def toggle_maintenance_mode(
-    payload: MaintenanceToggle = Body(...),
     current_user: CurrentAdminUser,
+    payload: MaintenanceToggle = Body(...),
 ):
     audit_log.delay(
         user_id=current_user.id,
@@ -284,4 +280,4 @@ async def toggle_maintenance_mode(
         "message": payload.message,
         "changed_by": current_user.email,
         "timestamp": datetime.now(ZoneInfo("UTC")).isoformat()
-                              }
+    }
