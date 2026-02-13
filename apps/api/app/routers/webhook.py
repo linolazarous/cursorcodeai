@@ -11,7 +11,14 @@ import uuid
 import hashlib
 from typing import Dict, Any
 
-from fastapi import APIRouter, Request, HTTPException, status, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    Request,
+    HTTPException,
+    status,
+    BackgroundTasks,
+    Depends,  # ← FIXED: added missing import
+)
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from stripe.error import SignatureVerificationError, StripeError
@@ -47,7 +54,6 @@ redis_client = Redis.from_url(str(settings.REDIS_URL), decode_responses=True)
 IDEMPOTENCY_TTL = 60 * 60 * 24 * 7      # 7 days
 DEBUG_PAYLOAD_TTL = 60 * 60 * 24        # 1 day for debug
 
-# FIXED: Extract raw string from SecretStr
 fernet = Fernet(settings.FERNET_KEY.get_secret_value())
 
 # Rate limiter: high burst for Stripe, per IP
