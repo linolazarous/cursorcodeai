@@ -14,10 +14,7 @@ from app.db.session import async_session_factory
 from app.db.models.user import User
 from app.core.config import settings
 from app.services.logging import audit_log
-from app.services.email import (
-    send_email,
-    send_low_credits_alert,
-)
+from app.services.email import send_email, send_low_credits_alert
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +78,7 @@ def handle_checkout_session_completed_task(
             metadata=metadata
         )
 
-        # Welcome email using generic send_email
+        # Welcome email
         send_email(
             to=user.email,
             subject="Welcome to CursorCode AI – Subscription Active!",
@@ -149,7 +146,7 @@ def handle_invoice_paid_task(
             metadata=metadata
         )
 
-        # Renewal notification using generic send_email
+        # Renewal notification
         send_email(
             to=user.email,
             subject="Subscription Renewed – Credits Added!",
@@ -209,7 +206,7 @@ def handle_invoice_payment_failed_task(
             metadata=metadata
         )
 
-        # Dunning email using generic send_email
+        # Dunning email
         send_email(
             to=user.email,
             subject=f"Payment Failed – Action Required (Attempt {attempt_count})",
@@ -272,7 +269,7 @@ def handle_subscription_updated_task(
             metadata=metadata
         )
 
-        # Notify on important changes using generic send_email
+        # Notify on important changes
         if new_status in ["past_due", "canceled", "unpaid"]:
             send_email(
                 to=user.email,
