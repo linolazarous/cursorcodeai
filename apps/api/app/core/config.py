@@ -6,7 +6,7 @@ Uses Resend for email sending (SendGrid migration complete).
 """
 
 from functools import lru_cache
-from typing import Any, List
+from typing import Any, Dict, List
 
 from pydantic import (
     AnyHttpUrl,
@@ -19,6 +19,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import json
 
 
 class Settings(BaseSettings):
@@ -58,12 +59,6 @@ class Settings(BaseSettings):
         """Computed API base URL (derived from FRONTEND_URL)."""
         return AnyHttpUrl(f"{self.FRONTEND_URL.rstrip('/')}/api")
 
-    # Optional – only if needed for legacy frontend links
-    next_public_app_url: str | None = Field(
-        default=None,
-        description="Frontend base URL (frontend-only; optional in backend)"
-    )
-
     # ────────────────────────────────────────────────
     # Database (PostgreSQL + asyncpg)
     # ────────────────────────────────────────────────
@@ -94,8 +89,39 @@ class Settings(BaseSettings):
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: str
     STRIPE_WEBHOOK_SECRET: SecretStr
 
-    # Optional: Pin Stripe API version for stability
-    STRIPE_API_VERSION: str | None = Field(default=None)
+    # NEW: Fernet key for encrypting debug payloads in webhook
+    FERNET_KEY: SecretStr = Field(
+        ...,
+        env="FERNET_KEY",
+        description="Fernet symmetric encryption key (32 bytes base64-encoded)"
+    )
+
+    # NEW: Credits per plan (JSON dict from env or fallback defaults)
+    STRIPE_PLAN_CREDITS_JSON: str | None = Field(
+        default=None,
+        env="STRIPE_PLAN_CREDITS_JSON",
+        description="JSON string: {'starter': 75, 'pro': 500, ...}"
+    )
+
+    @property
+    def STRIPE_PLAN_CREDITS(self) -> Dict[str, int]:
+        """Parsed credits per plan."""
+        if self.STRIPE_PLAN_CREDITS_JSON:
+            try:
+                return json.loads(self.STRIPE_PLAN_CREDITS_JSON)
+            except json.JSONDecodeError:
+                logger.warning("Invalid STRIPE_PLAN_CREDITS_JSON – using defaults")
+        # Fallback defaults
+        return {
+            "starter": 75,
+            "standard": 200,
+            "pro": 500,
+            "premier": 1500,
+            "ultra": 5000,
+        }
+
+    # NEW: Free tier credits (used on downgrade/cancel)
+    FREE_TIER_CREDITS: int = Field(10, ge=0, description="Credits granted on free tier/downgrade")
 
     # ────────────────────────────────────────────────
     # Resend Email
@@ -129,11 +155,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(15, ge=1, le=1440)
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(30, ge=1, le=90)
 
-    @field_validator("JWT_SECRET_KEY", "JWT_REFRESH_SECRET")
+    @field_validator("JWT_SECRET_KEY", "JWT_REFRESH_SECRET", "FERNET_KEY")
     @classmethod
-    def validate_jwt_secrets(cls, v: SecretStr) -> SecretStr:
+    def validate_secrets(cls, v: SecretStr) -> SecretStr:
         if len(v.get_secret_value()) < 32:
-            raise ValueError("JWT secrets must be at least 32 characters long")
+            raise ValueError("Secrets must be at least 32 characters long")
         return v
 
     COOKIE_SECURE: bool = Field(True, description="Set to False in development only")
