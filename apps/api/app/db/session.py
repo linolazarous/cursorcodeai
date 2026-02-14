@@ -2,7 +2,7 @@
 Database session management for CursorCode AI.
 Async SQLAlchemy engine, session factory, and FastAPI dependency.
 Production-ready: connection pooling, transaction handling, async support.
-Supabase-ready: pooled connection (port 6543), SSL forced.
+Supabase-ready: pooled connection (port 6543), SSL forced via connect_args.
 """
 
 import logging
@@ -57,7 +57,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 # ────────────────────────────────────────────────
-# Startup: Test connection (non-fatal)
+# Startup: Test connection (non-fatal if fails)
 # ────────────────────────────────────────────────
 async def init_db():
     db_url = str(settings.DATABASE_URL)
