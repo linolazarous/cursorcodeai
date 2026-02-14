@@ -1,4 +1,9 @@
-# app/db/session.py (updated engine + init_db)
+"""
+Database session management for CursorCode AI.
+Async SQLAlchemy engine, session factory, and FastAPI dependency.
+Production-ready: connection pooling, transaction handling, async support.
+Supabase-ready: uses pooled connection (recommended for Render/Fly/Railway).
+"""
 
 import logging
 from contextlib import asynccontextmanager
@@ -51,9 +56,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 # ────────────────────────────────────────────────
-# Startup: Test connection
+# Startup: Test connection (non-fatal if fails)
 # ────────────────────────────────────────────────
 async def init_db():
+    """
+    Run on app startup – verifies connection to PostgreSQL/Supabase.
+    Logs detailed error but does NOT crash app (allows partial startup).
+    """
+    db_url = str(settings.DATABASE_URL)
+    logger.info("Attempting DB connection test", extra={"url": db_url})
+
     try:
         async with engine.connect() as conn:
             result = await conn.execute(text("SELECT 1"))
@@ -61,7 +73,7 @@ async def init_db():
             logger.info(
                 "Database connection verified",
                 extra={
-                    "database_url": str(settings.DATABASE_URL),
+                    "url": db_url,
                     "first_result": result.scalar(),
                 }
             )
@@ -69,9 +81,25 @@ async def init_db():
         logger.critical(
             "Database connection failed on startup",
             exc_info=True,
-            extra={"database_url": str(settings.DATABASE_URL)}
+            extra={
+                "url": db_url,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            }
         )
-        raise RuntimeError("Database unavailable") from e
+        # Do NOT raise here – allow app to start (DB routes will 500)
+        # raise RuntimeError("Database unavailable") from e   # ← commented out
+
+    # Optional: Redis check (non-fatal)
+    if hasattr(settings, "REDIS_URL") and settings.REDIS_URL:
+        try:
+            from redis.asyncio import Redis
+            redis = Redis.from_url(str(settings.REDIS_URL))
+            await redis.ping()
+            await redis.aclose()
+            logger.info("Redis connection verified", extra={"redis_url": str(settings.REDIS_URL)})
+        except Exception as redis_exc:
+            logger.warning("Redis ping failed (continuing without Redis)", exc_info=redis_exc)
 
 
 # ────────────────────────────────────────────────
@@ -79,7 +107,7 @@ async def init_db():
 # ────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app):
-    await init_db()  # Test DB on startup
+    await init_db()  # Test DB on startup (non-fatal)
     yield
     await engine.dispose()
     logger.info("Database engine disposed on shutdown")
