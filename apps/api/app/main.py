@@ -3,13 +3,6 @@ CursorCode AI FastAPI Application Entry Point
 Production-ready (February 2026): middleware stack, lifespan, observability, security.
 Supabase-ready: external managed Postgres, no auto-migrations, no engine dispose.
 Custom monitoring: structured logging + Supabase error table + Prometheus /metrics.
-
-REMINDER INTEGRATION NOTES:
-- Auth middleware is NOT global — use Depends(get_current_user) in protected routes
-- Rate limit middleware is global and user-aware (after auth sets current_user)
-- Middleware order: CORS → Security Headers → Metrics/Logging → Rate Limiting
-- If using Redis for rate limiting/Celery, uncomment Redis ping in /ready
-- Ensure Supabase table 'app_errors' exists for error logging (columns: level, message, stack, user_id, request_path, request_method, environment, extra JSONB)
 """
 
 import logging
@@ -19,14 +12,12 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import insert, text
 
 from app.core.config import settings
-from app.db.session import lifespan, get_db
-from app.db.models import User, Org, Project, Plan, AuditLog
+from app.db.session import lifespan as db_lifespan, get_db
 from app.routers import (
     auth,
     orgs,
@@ -36,17 +27,20 @@ from app.routers import (
     admin,
     monitoring,
 )
-# from app.middleware.auth import get_current_user  # Selective via Depends – NOT global
 from app.middleware.security import add_security_headers
 from app.middleware.rate_limit import (
     limiter,
     RateLimitMiddleware,
     rate_limit_exceeded_handler,
 )
-# Optional: if you have a dedicated request logger middleware
-# from app.middleware.logging import log_requests_middleware
-from app.monitoring.metrics import registry, http_requests_total, http_request_duration_seconds
-from prometheus_client import generate_latest
+# Optional Prometheus (safe import)
+try:
+    from prometheus_client import generate_latest
+    from app.monitoring.metrics import registry
+    PROMETHEUS_ENABLED = True
+except (ImportError, ModuleNotFoundError):
+    PROMETHEUS_ENABLED = False
+    registry = None
 
 # ────────────────────────────────────────────────
 # Structured Logging Setup
@@ -68,7 +62,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url=None,
-    lifespan=lifespan,
+    lifespan=db_lifespan,
     debug=settings.ENVIRONMENT == "development",
     openapi_tags=[
         {"name": "Authentication", "description": "User auth & sessions"},
@@ -77,15 +71,15 @@ app = FastAPI(
         {"name": "Billing", "description": "Subscriptions, credits, Stripe"},
         {"name": "Webhooks", "description": "Stripe & external events"},
         {"name": "Admin", "description": "Platform administration (protected)"},
-        {"name": "Health", "description": "Health & readiness checks"},
         {"name": "Monitoring", "description": "Metrics & logging"},
     ],
 )
 
 # ────────────────────────────────────────────────
-# Global Middleware Stack (order matters!)
+# Global Middleware Stack (order is critical!)
 # ────────────────────────────────────────────────
-# 1. CORS (must be first)
+
+# 1. CORS – must be first
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[str(origin) for origin in settings.CORS_ORIGINS],
@@ -94,21 +88,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Security Headers (CSP, HSTS, etc.) — applied to every response
+# 2. Security Headers (CSP, HSTS, etc.) – applied to every response
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     response = await call_next(request)
-    add_security_headers(request, response)  # Apply headers
+    add_security_headers(request, response)
     return response
 
-# 3. Request Logging + Prometheus Metrics
+# 3. Request Logging + Prometheus Metrics (if enabled)
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     method = request.method
     path = request.url.path
     start_time = time.time()
 
-    # Correlation ID for tracing
+    # Correlation ID
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
 
@@ -120,19 +114,19 @@ async def metrics_middleware(request: Request, call_next):
         raise
     finally:
         duration = time.time() - start_time
-        http_requests_total.labels(method=method, path=path, status=status_code).inc()
-        http_request_duration_seconds.labels(method=method, path=path).observe(duration)
+        if PROMETHEUS_ENABLED:
+            try:
+                http_requests_total.labels(method=method, path=path, status=status_code).inc()
+                http_request_duration_seconds.labels(method=method, path=path, status=status_code).observe(duration)
+            except Exception as metrics_exc:
+                logger.warning("Prometheus metrics failed", exc_info=metrics_exc)
 
     return response
 
 # 4. Rate Limiting (Redis + user-aware keys)
-# NOTE: Auth middleware is selective (Depends(get_current_user)) — rate limit uses current_user if set
 app.add_middleware(RateLimitMiddleware)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-
-# Optional: Add dedicated request logging middleware if needed
-# app.add_middleware(log_requests_middleware)  # Uncomment if you want extra logging
 
 # ────────────────────────────────────────────────
 # Routers
@@ -146,26 +140,23 @@ app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])
 
 # ────────────────────────────────────────────────
-# Prometheus Metrics Endpoint
+# Prometheus Metrics Endpoint (if enabled)
 # ────────────────────────────────────────────────
-@app.get("/metrics", include_in_schema=False)
-async def metrics():
-    return Response(generate_latest(registry), media_type="text/plain")
-
+if PROMETHEUS_ENABLED:
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics():
+        return Response(generate_latest(registry), media_type="text/plain")
+else:
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics():
+        return {"detail": "Prometheus metrics not configured"}
 
 # ────────────────────────────────────────────────
 # Custom Global Exception Handler (structured + Supabase logging)
 # ────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def custom_exception_handler(request: Request, exc: Exception):
-    """
-    Custom handler:
-    - Structured logging with context
-    - Store error in Supabase 'app_errors' table (ensure table exists!)
-    - Return user-friendly 500 response
-    """
     request_id = getattr(request.state, "request_id", "unknown")
-    # Try to get user_id from auth middleware (if it ran before exception)
     user_id = getattr(request.state, "user_id", None) or getattr(
         getattr(request.state, "current_user", None), "id", None
     )
@@ -185,7 +176,7 @@ async def custom_exception_handler(request: Request, exc: Exception):
         }
     )
 
-    # Log to Supabase 'app_errors' (async) – REMINDER: table must exist
+    # Log to Supabase 'app_errors' (async)
     try:
         async with get_db() as db:
             await db.execute(
@@ -206,10 +197,7 @@ async def custom_exception_handler(request: Request, exc: Exception):
             )
             await db.commit()
     except Exception as db_exc:
-        logger.error(
-            f"Failed to log error to Supabase: {db_exc}",
-            extra={"request_id": request_id}
-        )
+        logger.error(f"Failed to log error to Supabase: {db_exc}", extra={"request_id": request_id})
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -229,22 +217,10 @@ async def health_check():
 async def readiness_check():
     """
     Readiness probe: DB ping + optional Redis ping.
-    REMINDER: Uncomment Redis check below if rate limiting or Celery uses Redis.
     """
     try:
         async with get_db() as db:
             await db.execute(text("SELECT 1"))
-
-        # Optional Redis readiness check (uncomment if using Redis)
-        # try:
-        #     from redis.asyncio import Redis
-        #     redis = Redis.from_url(str(settings.REDIS_URL))
-        #     await redis.ping()
-        #     await redis.aclose()
-        # except Exception as redis_exc:
-        #     logger.warning("Redis readiness failed", exc_info=redis_exc)
-        #     return JSONResponse(status_code=503, content={"status": "not ready", "error": "Redis unavailable"})
-
         return {"status": "ready"}
     except Exception as e:
         logger.error("Readiness check failed", exc_info=True)
