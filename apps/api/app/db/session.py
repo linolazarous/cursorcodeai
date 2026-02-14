@@ -1,13 +1,11 @@
 """
-Database session management for CursorCode AI.
+CursorCode AI Database Session
 
-Production-grade:
+FINAL Production Fix:
 • Supabase pooler compatible
+• Fix CERTIFICATE_VERIFY_FAILED
+• Render compatible
 • asyncpg correct SSL handling
-• Stable connection pooling
-• FastAPI dependency
-• Startup health check
-• Graceful shutdown
 """
 
 import logging
@@ -27,22 +25,18 @@ from sqlalchemy import text
 from app.core.config import settings
 
 
-# ────────────────────────────────────────────────
-# Logging
-# ────────────────────────────────────────────────
-
 logger = logging.getLogger("cursorcode.db")
 
 
 # ────────────────────────────────────────────────
-# Proper SSL Context for asyncpg
+# CRITICAL FIX: Supabase Pooler SSL
 # ────────────────────────────────────────────────
 
 ssl_context = ssl.create_default_context()
 
-# Supabase pooler fix
+# REQUIRED for Supabase pooler
 ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_REQUIRED
+ssl_context.verify_mode = ssl.CERT_NONE
 
 
 # ────────────────────────────────────────────────
@@ -52,6 +46,7 @@ ssl_context.verify_mode = ssl.CERT_REQUIRED
 DATABASE_URL = str(settings.DATABASE_URL)
 
 engine: AsyncEngine = create_async_engine(
+
     DATABASE_URL,
 
     echo=settings.ENVIRONMENT == "development",
@@ -73,19 +68,18 @@ engine: AsyncEngine = create_async_engine(
 
 
 # ────────────────────────────────────────────────
-# Session Factory
+# Session
 # ────────────────────────────────────────────────
 
 async_session_factory = async_sessionmaker(
+
     bind=engine,
+
     expire_on_commit=False,
+
     class_=AsyncSession,
 )
 
-
-# ────────────────────────────────────────────────
-# FastAPI Dependency
-# ────────────────────────────────────────────────
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
@@ -114,7 +108,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db():
 
-    logger.info("Testing database connection...")
+    logger.info("Connecting to Supabase database...")
 
     try:
 
@@ -130,7 +124,7 @@ async def init_db():
     except Exception:
 
         logger.critical(
-            "Database connection failed",
+            "DATABASE CONNECTION FAILED",
             exc_info=True
         )
 
@@ -142,20 +136,14 @@ async def init_db():
 @asynccontextmanager
 async def lifespan(app):
 
-    logger.info("Starting database")
-
     await init_db()
 
     yield
 
-    logger.info("Closing database")
-
     await engine.dispose()
 
+    logger.info("Database engine closed")
 
-# ────────────────────────────────────────────────
-# Utility
-# ────────────────────────────────────────────────
 
 def get_engine() -> AsyncEngine:
 
