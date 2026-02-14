@@ -2,7 +2,7 @@
 Database session management for CursorCode AI.
 Async SQLAlchemy engine, session factory, and FastAPI dependency.
 Production-ready: connection pooling, transaction handling, async support.
-Supabase-ready: uses pooled connection (recommended for Render/Fly/Railway).
+Supabase-ready: pooled connection (port 6543), SSL forced.
 """
 
 import logging
@@ -28,7 +28,8 @@ engine: AsyncEngine = create_async_engine(
     pool_timeout=30,
     pool_recycle=600,
     connect_args={
-        "ssl": True if "supabase" in str(settings.DATABASE_URL).lower() else None,
+        "ssl": True,  # Force SSL for Supabase (required)
+        "server_settings": {"application_name": "cursorcode-api"},
     },
 )
 
@@ -56,22 +57,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 # ────────────────────────────────────────────────
-# Startup: Test connection (non-fatal if fails)
+# Startup: Test connection (non-fatal)
 # ────────────────────────────────────────────────
 async def init_db():
-    """
-    Run on app startup – verifies connection to PostgreSQL/Supabase.
-    Logs detailed error but does NOT crash app (allows partial startup).
-    """
     db_url = str(settings.DATABASE_URL)
-    logger.info("Attempting DB connection test", extra={"url": db_url})
+    logger.info("Testing database connection", extra={"url": db_url})
 
     try:
         async with engine.connect() as conn:
             result = await conn.execute(text("SELECT 1"))
-            await conn.commit()
             logger.info(
-                "Database connection verified",
+                "Database connection successful",
                 extra={
                     "url": db_url,
                     "first_result": result.scalar(),
@@ -84,22 +80,11 @@ async def init_db():
             extra={
                 "url": db_url,
                 "error_type": type(e).__name__,
-                "error_message": str(e),
+                "error_msg": str(e),
             }
         )
         # Do NOT raise here – allow app to start (DB routes will 500)
-        # raise RuntimeError("Database unavailable") from e   # ← commented out
-
-    # Optional: Redis check (non-fatal)
-    if hasattr(settings, "REDIS_URL") and settings.REDIS_URL:
-        try:
-            from redis.asyncio import Redis
-            redis = Redis.from_url(str(settings.REDIS_URL))
-            await redis.ping()
-            await redis.aclose()
-            logger.info("Redis connection verified", extra={"redis_url": str(settings.REDIS_URL)})
-        except Exception as redis_exc:
-            logger.warning("Redis ping failed (continuing without Redis)", exc_info=redis_exc)
+        # raise RuntimeError("Database unavailable") from e
 
 
 # ────────────────────────────────────────────────
