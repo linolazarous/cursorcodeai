@@ -1,3 +1,5 @@
+import path from 'path';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // ────────────────────────────────────────────────
@@ -10,7 +12,6 @@ const nextConfig = {
   // Experimental features
   // ────────────────────────────────────────────────
   experimental: {
-    // REMOVED: turbopack - this is a CLI flag, not a config option
     serverActions: {
       bodySizeLimit: "10mb",
     },
@@ -18,13 +19,16 @@ const nextConfig = {
   },
 
   // ────────────────────────────────────────────────
-  // Monorepo: transpile shared packages
+  // Monorepo: transpile shared packages + Vercel tracing fix
   // ────────────────────────────────────────────────
   transpilePackages: [
     "@cursorcode/ui",
     "@cursorcode/db",
     "@cursorcode/types",
   ],
+
+  // IMPORTANT: Fixes import mismatches for shared packages on Vercel
+  outputFileTracingRoot: path.join(__dirname, '../../'), // points to monorepo root
 
   // ────────────────────────────────────────────────
   // Image optimization (remote patterns)
@@ -102,25 +106,20 @@ const nextConfig = {
           },
         ],
       },
-    ]
+    ];
   },
 
   // ────────────────────────────────────────────────
-  // Output: standalone for Docker/Vercel
+  // Output: standalone for Docker (kept for your Dockerfile)
+  // Remove or comment this line if deploying pure Vercel without Docker
   // ────────────────────────────────────────────────
   output: "standalone",
 
   // ────────────────────────────────────────────────
-  // Redirects / rewrites
+  // Redirects (cleaned — no placeholder)
   // ────────────────────────────────────────────────
   async redirects() {
-    return [
-      {
-        source: "/old-path",
-        destination: "/new-path",
-        permanent: true,
-      },
-    ]
+    return [];
   },
 
   // ────────────────────────────────────────────────
@@ -129,17 +128,17 @@ const nextConfig = {
   webpack(config, { isServer }) {
     // Bundle analyzer (optional)
     if (!isServer && process.env.ANALYZE === "true") {
-      const { BundleAnalyzerPlugin } = require("@next/bundle-analyzer")
+      const { BundleAnalyzerPlugin } = require("@next/bundle-analyzer");
       config.plugins.push(
         new BundleAnalyzerPlugin({
           analyzerMode: "static",
           openAnalyzer: false,
           reportFilename: "bundle-analysis.html",
         })
-      )
+      );
     }
-    return config
+    return config;
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
