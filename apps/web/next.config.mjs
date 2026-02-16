@@ -1,5 +1,3 @@
-// apps/web/next.config.mjs
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // ────────────────────────────────────────────────
@@ -8,13 +6,15 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
 
-  // Enable Turbopack in dev (experimental, fast)
+  // ────────────────────────────────────────────────
+  // Experimental features
+  // ────────────────────────────────────────────────
   experimental: {
-    turbopack: process.env.NODE_ENV === "development",
+    // REMOVED: turbopack - this is a CLI flag, not a config option
     serverActions: {
       bodySizeLimit: "10mb",
     },
-    optimizePackageImports: ["lucide-react", "@radix-ui/react-*", "class-variance-authority"],
+    optimizePackageImports: ["lucide-react", "@radix-ui/react-label", "class-variance-authority"],
   },
 
   // ────────────────────────────────────────────────
@@ -55,7 +55,6 @@ const nextConfig = {
         port: "",
         pathname: "/**",
       },
-      // Add any other CDNs or user-upload domains
     ],
     minimumCacheTTL: 60,
     formats: ["image/avif", "image/webp"],
@@ -89,7 +88,6 @@ const nextConfig = {
             key: "Referrer-Policy",
             value: "strict-origin-when-cross-origin",
           },
-          // CSP (adjust as needed for your app)
           {
             key: "Content-Security-Policy",
             value: [
@@ -98,7 +96,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https://images.unsplash.com https://api.dicebear.com https://*.cursorcode.app",
-              "connect-src 'self' https://api.x.ai https://api.stripe.com https://*.cursorcode.app",
+              "connect-src 'self' https://api.x.ai https://api.stripe.com https://*.cursorcode.app https://cursorcode-ai.onrender.com",
               "frame-ancestors 'none'",
             ].join("; "),
           },
@@ -108,17 +106,28 @@ const nextConfig = {
   },
 
   // ────────────────────────────────────────────────
-  // Internationalization (i18n) stub — enable later
+  // Output: standalone for Docker/Vercel
   // ────────────────────────────────────────────────
-  // i18n: {
-  //   locales: ["en", "es", "fr"],
-  //   defaultLocale: "en",
-  // },
+  output: "standalone",
 
   // ────────────────────────────────────────────────
-  // Bundle analyzer (optional - run with ANALYZE=true pnpm build)
+  // Redirects / rewrites
+  // ────────────────────────────────────────────────
+  async redirects() {
+    return [
+      {
+        source: "/old-path",
+        destination: "/new-path",
+        permanent: true,
+      },
+    ]
+  },
+
+  // ────────────────────────────────────────────────
+  // Webpack configuration (optional)
   // ────────────────────────────────────────────────
   webpack(config, { isServer }) {
+    // Bundle analyzer (optional)
     if (!isServer && process.env.ANALYZE === "true") {
       const { BundleAnalyzerPlugin } = require("@next/bundle-analyzer")
       config.plugins.push(
@@ -130,24 +139,6 @@ const nextConfig = {
       )
     }
     return config
-  },
-
-  // ────────────────────────────────────────────────
-  // Output: standalone for Docker/Vercel
-  // ────────────────────────────────────────────────
-  output: "standalone",
-
-  // ────────────────────────────────────────────────
-  // Redirects / rewrites (optional examples)
-  // ────────────────────────────────────────────────
-  async redirects() {
-    return [
-      {
-        source: "/old-path",
-        destination: "/new-path",
-        permanent: true,
-      },
-    ]
   },
 }
 
