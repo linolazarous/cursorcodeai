@@ -8,7 +8,7 @@ metadata:
     app: cursorcode-api
     tier: backend
 spec:
-  type: ClusterIP          # Internal service (recommended with Ingress)
+  type: LoadBalancer          # Exposes API directly via external IP
   selector:
     app: cursorcode-api
   ports:
@@ -17,31 +17,5 @@ spec:
       targetPort: 8000
       protocol: TCP
 
----
-# Optional: Ingress (recommended for production)
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: cursorcode-api
-  namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"   # Change if using another issuer
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - api.cursorcode.ai
-      secretName: cursorcode-api-tls
-  rules:
-    - host: api.cursorcode.ai
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: cursorcode-api
-                port:
-                  number: 8000
+  # Optional: Reserve a static IP if your cloud provider supports it
+  # loadBalancerIP: "your-static-ip-here"
