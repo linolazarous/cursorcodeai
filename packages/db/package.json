@@ -2,6 +2,7 @@
   "name": "@cursorcode/db",
   "version": "1.0.0",
   "private": true,
+  "description": "Database layer for CursorCode AI (Prisma + shared models)",
   "main": "./index.ts",
   "types": "./index.ts",
   "scripts": {
@@ -10,13 +11,15 @@
     "migrate:dev": "prisma migrate dev",
     "db:push": "prisma db push",
     "studio": "prisma studio",
+    "seed": "tsx seed.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.17.0"
   },
   "devDependencies": {
-    "prisma": "^5.17.0"
+    "prisma": "^5.17.0",
+    "tsx": "^4.19.2"
   },
   "prisma": {
     "schema": "./prisma/schema.prisma"
