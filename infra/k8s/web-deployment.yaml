@@ -1,0 +1,67 @@
+# infra/k8s/web-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cursorcode-web
+  namespace: default
+  labels:
+    app: cursorcode-web
+    tier: frontend
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: cursorcode-web
+
+  template:
+    metadata:
+      labels:
+        app: cursorcode-web
+        tier: frontend
+    spec:
+      containers:
+        - name: web
+          image: yourregistry/cursorcode-web:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 3000
+              name: http
+
+          envFrom:
+            - secretRef:
+                name: cursorcode-secrets
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 8
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "384Mi"
+            limits:
+              cpu: "800m"
+              memory: "768Mi"
+
+          terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
