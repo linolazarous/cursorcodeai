@@ -1,0 +1,74 @@
+# infra/docker-compose.yaml
+version: '3.9'
+
+services:
+  # ====================== FRONTEND ======================
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: cursorcode-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+      - NODE_ENV=development
+    volumes:
+      - ../apps/web:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ====================== BACKEND ======================
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: cursorcode-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/cursorcode
+      - REDIS_URL=redis://redis:6379/0
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=development
+    volumes:
+      - ../apps/api:/app
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  # ====================== DATABASE ======================
+  db:
+    image: postgres:16-alpine
+    container_name: cursorcode-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cursorcode
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ====================== REDIS (for Celery) ======================
+  redis:
+    image: redis:7-alpine
+    container_name: cursorcode-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
