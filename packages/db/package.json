@@ -1,8 +1,24 @@
 {
-"name": "@cursorcode/db",
-"scripts": {
-"generate": "prisma generate",
-"migrate": "prisma migrate deploy"
-},
-"dependencies": { "prisma": "^5.8.1" }
+  "name": "@cursorcode/db",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "studio": "prisma studio",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.17.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.17.0"
+  },
+  "prisma": {
+    "schema": "./prisma/schema.prisma"
+  }
 }
