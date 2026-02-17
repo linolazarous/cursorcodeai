@@ -1,22 +1,76 @@
+# infra/k8s/api-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-name: cursorcode-api
+  name: cursorcode-api
+  namespace: default
+  labels:
+    app: cursorcode-api
+    tier: backend
 spec:
-replicas: 2
-selector:
-matchLabels:
-app: cursorcode-api
-template:
-metadata:
-labels:
-app: cursorcode-api
-spec:
-containers:
-- name: api
-image: yourregistry/cursorcode-api:latest
-ports:
-- containerPort: 8000
-envFrom:
-- secretRef:
-name: cursorcode-secrets  # Kubernetes secret with env vars
+  replicas: 3                    # High availability (recommended)
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: cursorcode-api
+
+  template:
+    metadata:
+      labels:
+        app: cursorcode-api
+        tier: backend
+      annotations:
+        # Restart pod on secret/config change (optional)
+        checksum/config: "{{ .Values.configChecksum }}"
+
+    spec:
+      containers:
+        - name: api
+          image: yourregistry/cursorcode-api:latest   # ← Change to your actual image
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 8000
+              name: http
+
+          # Critical for Render → K8s migration
+          envFrom:
+            - secretRef:
+                name: cursorcode-secrets
+
+          # Health checks (matches your existing /health and /ready endpoints)
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+
+          # Resource limits (adjust based on your backend usage)
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1500m"
+              memory: "1.5Gi"
+
+          # Graceful shutdown
+          terminationGracePeriodSeconds: 30
+
+      # Optional: Security context (run as non-root)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
