@@ -1,4 +1,11 @@
-import path from 'path';
+import path from "path";
+import { fileURLToPath } from "url";
+
+/**
+ * Fix __dirname in ES module scope
+ */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -15,11 +22,15 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
-    optimizePackageImports: ["lucide-react", "@radix-ui/react-label", "class-variance-authority"],
+    optimizePackageImports: [
+      "lucide-react",
+      "@radix-ui/react-label",
+      "class-variance-authority",
+    ],
   },
 
   // ────────────────────────────────────────────────
-  // Monorepo: transpile shared packages + Vercel tracing fix
+  // Monorepo support
   // ────────────────────────────────────────────────
   transpilePackages: [
     "@cursorcode/ui",
@@ -27,36 +38,32 @@ const nextConfig = {
     "@cursorcode/types",
   ],
 
-  // IMPORTANT: Fixes import mismatches for shared packages on Vercel
-  outputFileTracingRoot: path.join(__dirname, '../../'), // points to monorepo root
+  // ✅ FIXED dirname usage
+  outputFileTracingRoot: path.join(__dirname, "../../"),
 
   // ────────────────────────────────────────────────
-  // Image optimization (remote patterns)
+  // Images
   // ────────────────────────────────────────────────
   images: {
     remotePatterns: [
       {
         protocol: "https",
         hostname: "cursorcode.app",
-        port: "",
         pathname: "/**",
       },
       {
         protocol: "https",
         hostname: "**.vercel.app",
-        port: "",
         pathname: "/**",
       },
       {
         protocol: "https",
         hostname: "images.unsplash.com",
-        port: "",
         pathname: "/**",
       },
       {
         protocol: "https",
         hostname: "api.dicebear.com",
-        port: "",
         pathname: "/**",
       },
     ],
@@ -65,7 +72,7 @@ const nextConfig = {
   },
 
   // ────────────────────────────────────────────────
-  // Security headers (CSP, HSTS, etc.)
+  // Security headers
   // ────────────────────────────────────────────────
   async headers() {
     return [
@@ -74,7 +81,8 @@ const nextConfig = {
         headers: [
           {
             key: "Strict-Transport-Security",
-            value: "max-age=31536000; includeSubDomains; preload",
+            value:
+              "max-age=31536000; includeSubDomains; preload",
           },
           {
             key: "X-Content-Type-Options",
@@ -110,25 +118,18 @@ const nextConfig = {
   },
 
   // ────────────────────────────────────────────────
-  // Output: standalone for Docker (kept for your Dockerfile)
-  // Remove or comment this line if deploying pure Vercel without Docker
+  // Output standalone
   // ────────────────────────────────────────────────
   output: "standalone",
 
-  // ────────────────────────────────────────────────
-  // Redirects (cleaned — no placeholder)
-  // ────────────────────────────────────────────────
   async redirects() {
     return [];
   },
 
-  // ────────────────────────────────────────────────
-  // Webpack configuration (optional)
-  // ────────────────────────────────────────────────
   webpack(config, { isServer }) {
-    // Bundle analyzer (optional)
     if (!isServer && process.env.ANALYZE === "true") {
       const { BundleAnalyzerPlugin } = require("@next/bundle-analyzer");
+
       config.plugins.push(
         new BundleAnalyzerPlugin({
           analyzerMode: "static",
@@ -137,6 +138,7 @@ const nextConfig = {
         })
       );
     }
+
     return config;
   },
 };
