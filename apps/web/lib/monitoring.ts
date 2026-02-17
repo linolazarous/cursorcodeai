@@ -1,25 +1,28 @@
 // apps/web/lib/monitoring.ts
 /**
- * Custom frontend monitoring – sends errors to backend for logging in Supabase.
- * No third-party SDK (no Sentry).
+ * Frontend Error Monitoring for CursorCode AI
+ * Sends client-side errors to backend for logging in Supabase.
+ * No third-party services (no Sentry).
  */
+
+import { isDevelopment } from "@/lib/utils"; // Optional helper if you have one
 
 export async function reportFrontendError(
   error: Error | string,
   extra: Record<string, any> = {}
 ) {
   try {
-    const message = error instanceof Error ? error.message : error
-    const stack = error instanceof Error ? error.stack : undefined
+    const message = error instanceof Error ? error.message : error;
+    const stack = error instanceof Error ? error.stack : undefined;
 
     const payload = {
       message,
       stack,
-      url: typeof window !== "undefined" ? window.location.href : "unknown",
+      url: typeof window !== "undefined" ? window.location.href : "server",
       userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
       timestamp: new Date().toISOString(),
       ...extra,
-    }
+    };
 
     const res = await fetch("/api/monitoring/frontend-error", {
       method: "POST",
@@ -27,41 +30,51 @@ export async function reportFrontendError(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
-      // Include credentials if user is logged in (for user_id association)
-      credentials: "include",
-    })
+      credentials: "include", // Important: allows backend to associate with logged-in user
+    });
 
     if (!res.ok) {
-      console.warn("Failed to report error to backend:", await res.text())
+      const errorText = await res.text().catch(() => "Unknown error");
+      console.warn("[Monitoring] Failed to report to backend:", errorText);
+    } else if (isDevelopment) {
+      console.log("[Monitoring] Error reported successfully:", message);
     }
   } catch (reportErr) {
-    console.error("Error reporting failed:", reportErr)
+    // Fail silently in production to avoid cascading errors
+    if (process.env.NODE_ENV === "development") {
+      console.error("[Monitoring] Reporting failed:", reportErr);
+    }
   }
 }
 
 // ────────────────────────────────────────────────
-// Global error handlers (set once on client)
+// Global Error Handlers (Client-Side Only)
+// Set only once to prevent duplicate listeners
 // ────────────────────────────────────────────────
-if (typeof window !== "undefined") {
-  // Catch unhandled sync errors
-  const originalOnError = window.onerror
+if (typeof window !== "undefined" && !window.__monitoringInitialized) {
+  window.__monitoringInitialized = true;
+
+  // Catch synchronous errors
+  const originalOnError = window.onerror;
   window.onerror = (msg, url, line, col, error) => {
     reportFrontendError(error || new Error(String(msg)), {
       source: "window.onerror",
       url,
       line,
       col,
-    })
-    if (originalOnError) originalOnError(msg, url, line, col, error)
-    return false // Allow default console logging
-  }
+    });
+
+    if (originalOnError) originalOnError(msg, url, line, col, error);
+    return false; // Let default browser handler also run
+  };
 
   // Catch unhandled promise rejections
-  const originalOnUnhandledRejection = window.onunhandledrejection
+  const originalOnUnhandledRejection = window.onunhandledrejection;
   window.onunhandledrejection = (event) => {
     reportFrontendError(event.reason, {
       source: "unhandledrejection",
-    })
-    if (originalOnUnhandledRejection) originalOnUnhandledRejection(event)
-  }
+    });
+
+    if (originalOnUnhandledRejection) originalOnUnhandledRejection(event);
+  };
 }
