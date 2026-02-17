@@ -1,13 +1,14 @@
 // apps/web/components/CreditMeter.tsx
-"use client"
+"use client";
 
-import { Progress } from "@/components/ui/progress"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Zap } from "lucide-react";
 
 interface CreditMeterProps {
-  credits: number
-  plan: string
+  credits: number;
+  plan: string;
 }
 
 export function CreditMeter({ credits, plan }: CreditMeterProps) {
@@ -17,26 +18,46 @@ export function CreditMeter({ credits, plan }: CreditMeterProps) {
     pro: 150,
     premier: 600,
     ultra: 2000,
-  }[plan] || 10
+  }[plan] || 10;
 
-  const percentage = Math.min((credits / maxCredits) * 100, 100)
+  const percentage = Math.min((credits / maxCredits) * 100, 100);
+  const isLow = credits < 5;
+  const isCritical = credits === 0;
 
   return (
-    <Card className="w-72">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Credits ({plan})</span>
-          <Badge variant={credits < 5 ? "destructive" : "secondary"}>
+    <Card className="cyber-card neon-glow border-brand-blue/30 w-72">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-full bg-brand-blue/10">
+              <Zap className="h-5 w-5 text-brand-glow" />
+            </div>
+            <span className="text-display text-sm font-semibold tracking-tight">AI Credits</span>
+          </div>
+
+          <Badge
+            variant={isCritical ? "destructive" : isLow ? "secondary" : "default"}
+            className="neon-glow font-mono text-xs px-3 py-1"
+          >
             {credits} / {maxCredits}
           </Badge>
         </div>
-        <Progress value={percentage} className="h-2" />
-        {credits < 5 && (
-          <p className="text-xs text-destructive mt-2">
-            Low credits! Upgrade to continue building.
+
+        <Progress
+          value={percentage}
+          className={`h-3 transition-all ${isLow ? "neon-glow" : ""}`}
+        />
+
+        {isLow && (
+          <p className="text-xs text-destructive mt-3 flex items-center gap-1.5 font-medium">
+            ⚠️ Low credits — Upgrade to keep building
           </p>
         )}
+
+        <div className="mt-4 text-[10px] text-muted-foreground font-mono text-right tracking-widest">
+          {plan.toUpperCase()} PLAN
+        </div>
       </CardContent>
     </Card>
-  )
+  );
 }
