@@ -1,43 +1,54 @@
 // apps/web/components/2FASetup.tsx
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import * as z from "zod"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
-import { useToast } from "@/components/ui/use-toast"
-import { Copy, Loader2, CheckCircle2, XCircle, ShieldCheck } from "lucide-react"
-import { useCopyToClipboard } from "usehooks-ts"
-import { useSession } from "next-auth/react"
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/components/ui/use-toast";
+import { Copy, Loader2, CheckCircle2, XCircle, ShieldCheck } from "lucide-react";
+import { useCopyToClipboard } from "usehooks-ts";
+import { useSession } from "next-auth/react";
 
 const formSchema = z.object({
   code: z.string().length(6, "Must be exactly 6 digits").regex(/^\d{6}$/, "Must be numeric"),
-})
+});
 
-type FormData = z.infer<typeof formSchema>
+type FormData = z.infer<typeof formSchema>;
 
 type TwoFASetupProps = {
-  onSuccess?: () => void
-}
+  onSuccess?: () => void;
+  mode?: "enable" | "disable"; // Added for flexibility from dashboard
+};
 
-export default function TwoFASetup({ onSuccess }: TwoFASetupProps) {
-  const { data: session, update } = useSession()
-  const { toast } = useToast()
-  const [copiedText, copyToClipboard] = useCopyToClipboard()
+export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupProps) {
+  const { data: session, update } = useSession();
+  const { toast } = useToast();
+  const [copiedText, copyToClipboard] = useCopyToClipboard();
 
-  const [isEnabled, setIsEnabled] = useState(session?.user?.totp_enabled || false)
-  const [qrCode, setQrCode] = useState<string | null>(null)
-  const [secret, setSecret] = useState<string | null>(null)
-  const [backupCodes, setBackupCodes] = useState<string[]>([])
-  const [showBackupCodes, setShowBackupCodes] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isEnabled, setIsEnabled] = useState(session?.user?.totp_enabled || false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [secret, setSecret] = useState<string | null>(null);
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const {
     register,
@@ -46,50 +57,51 @@ export default function TwoFASetup({ onSuccess }: TwoFASetupProps) {
     reset,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
-  })
+  });
 
-  // Fetch 2FA setup data when enabling
+  // Enable 2FA
   const enable2FA = async () => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
       const res = await fetch("/api/auth/2fa/enable", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-      })
+      });
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.detail || "Failed to enable 2FA")
+        const data = await res.json();
+        throw new Error(data.detail || "Failed to enable 2FA");
       }
 
-      const data = await res.json()
-      setQrCode(data.qr_code_base64)
-      setSecret(data.secret)
-      setBackupCodes(data.backup_codes)
-      setShowBackupCodes(true)
+      const data = await res.json();
+      setQrCode(data.qr_code_base64);
+      setSecret(data.secret);
+      setBackupCodes(data.backup_codes);
+      setShowBackupCodes(true);
+
       toast({
         title: "2FA Setup Ready",
-        description: "Scan the QR code or enter the secret manually.",
-      })
+        description: "Scan the QR code with your authenticator app.",
+      });
     } catch (err: any) {
-      setError(err.message)
+      setError(err.message);
       toast({
         variant: "destructive",
-        title: "Error",
+        title: "Setup Failed",
         description: err.message,
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  // Verify code to activate 2FA
+  // Verify & Activate
   const onVerify = async (data: FormData) => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
       const res = await fetch("/api/auth/2fa/verify", {
@@ -97,127 +109,122 @@ export default function TwoFASetup({ onSuccess }: TwoFASetupProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: data.code }),
         credentials: "include",
-      })
+      });
 
       if (!res.ok) {
-        const errorData = await res.json()
-        throw new Error(errorData.detail || "Invalid code")
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Invalid code");
       }
 
-      // Update session (refresh user data)
-      await update({ totp_enabled: true })
+      await update({ totp_enabled: true });
 
       toast({
-        title: "2FA Enabled",
-        description: "Two-factor authentication is now active on your account.",
-      })
+        title: "2FA Enabled Successfully",
+        description: "Your account is now protected with two-factor authentication.",
+      });
 
-      setIsEnabled(true)
-      setQrCode(null)
-      setSecret(null)
-      setBackupCodes([])
-      setShowBackupCodes(false)
-      reset()
+      setIsEnabled(true);
+      setQrCode(null);
+      setSecret(null);
+      setBackupCodes([]);
+      setShowBackupCodes(false);
+      reset();
 
-      if (onSuccess) onSuccess()
+      onSuccess?.();
     } catch (err: any) {
-      setError(err.message)
+      setError(err.message);
       toast({
         variant: "destructive",
         title: "Verification Failed",
         description: err.message,
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  // Disable 2FA (with confirmation)
+  // Disable 2FA
   const disable2FA = async () => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const code = prompt("Enter your current 2FA code or a backup code to disable:")
-      if (!code) return
+      const code = prompt("Enter your current 2FA code or a backup code:");
+      if (!code) return;
 
       const res = await fetch("/api/auth/2fa/disable", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
         credentials: "include",
-      })
+      });
 
       if (!res.ok) {
-        const errorData = await res.json()
-        throw new Error(errorData.detail || "Invalid code")
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Invalid code");
       }
 
-      await update({ totp_enabled: false })
+      await update({ totp_enabled: false });
 
       toast({
         title: "2FA Disabled",
         description: "Two-factor authentication has been turned off.",
-      })
+      });
 
-      setIsEnabled(false)
+      setIsEnabled(false);
+      onSuccess?.();
     } catch (err: any) {
-      setError(err.message)
+      setError(err.message);
       toast({
         variant: "destructive",
-        title: "Error",
+        title: "Disable Failed",
         description: err.message,
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  // Copy helper with toast
   const copySecret = () => {
     if (secret) {
-      copyToClipboard(secret)
-      toast({ title: "Secret Copied", description: "Secret key copied to clipboard" })
+      copyToClipboard(secret);
+      toast({ title: "Secret Copied", description: "Manual entry key copied" });
     }
-  }
+  };
 
   const copyBackupCodes = () => {
     if (backupCodes.length) {
-      copyToClipboard(backupCodes.join("\n"))
-      toast({ title: "Backup Codes Copied", description: "All backup codes copied" })
+      copyToClipboard(backupCodes.join("\n"));
+      toast({ title: "Backup Codes Copied", description: "Save these securely!" });
     }
-  }
+  };
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
+    <Card className="cyber-card neon-glow border-brand-blue/30 w-full max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShieldCheck className="h-6 w-6" />
-          Two-Factor Authentication (2FA)
+        <CardTitle className="text-display text-2xl flex items-center gap-3">
+          <ShieldCheck className="h-7 w-7 text-brand-blue" />
+          Two-Factor Authentication
         </CardTitle>
-        <CardDescription>
-          Add an extra layer of security to your account using an authenticator app.
+        <CardDescription className="text-base">
+          Add an extra layer of security using an authenticator app.
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        {/* Current Status */}
-        <div className="flex items-center justify-between">
+      <CardContent className="space-y-8">
+        {/* Status Bar */}
+        <div className="flex items-center justify-between py-3 px-4 bg-card rounded-xl border border-border">
           <div>
-            <p className="font-medium">Status</p>
-            <p className="text-sm text-muted-foreground">
-              {isEnabled ? (
-                <span className="text-green-600 font-semibold">Enabled</span>
-              ) : (
-                <span className="text-amber-600 font-semibold">Disabled (recommended)</span>
-              )}
+            <p className="font-medium">Current Status</p>
+            <p className={`text-sm font-semibold ${isEnabled ? "text-green-400" : "text-amber-400"}`}>
+              {isEnabled ? "✅ Enabled" : "⚠️ Disabled (recommended to enable)"}
             </p>
           </div>
 
           {isEnabled ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" disabled={isLoading}>
+                <Button variant="destructive" size="sm" className="neon-glow">
                   Disable 2FA
                 </Button>
               </AlertDialogTrigger>
@@ -225,26 +232,26 @@ export default function TwoFASetup({ onSuccess }: TwoFASetupProps) {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Disable 2FA?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will reduce your account security. You will need to enter a 2FA code or backup code to disable.
+                    This will reduce your account security. You will need a 2FA code or backup code to confirm.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction onClick={disable2FA} disabled={isLoading}>
-                    {isLoading ? "Disabling..." : "Disable"}
+                    {isLoading ? "Disabling..." : "Yes, Disable"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
           ) : (
-            <Button onClick={enable2FA} disabled={isLoading}>
+            <Button onClick={enable2FA} disabled={isLoading} className="neon-glow">
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Enabling...
+                  Preparing Setup...
                 </>
               ) : (
-                "Enable 2FA"
+                "Enable 2FA Now"
               )}
             </Button>
           )}
@@ -252,61 +259,59 @@ export default function TwoFASetup({ onSuccess }: TwoFASetupProps) {
 
         {/* Error */}
         {error && (
-          <Alert variant="destructive">
-            <XCircle className="h-4 w-4" />
+          <Alert variant="destructive" className="neon-glow">
+            <XCircle className="h-5 w-5" />
             <AlertTitle>Error</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* Setup Flow (when enabling) */}
+        {/* Setup Flow */}
         {!isEnabled && qrCode && (
-          <div className="space-y-6 border-t pt-6">
+          <div className="space-y-8 pt-4 border-t border-border">
             <div className="grid md:grid-cols-2 gap-8">
               {/* QR Code */}
               <div className="flex flex-col items-center space-y-4">
                 <p className="text-center text-sm text-muted-foreground">
-                  Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                  Scan with Google Authenticator, Authy, or any TOTP app
                 </p>
-                <div className="bg-white p-4 rounded-lg border shadow-sm">
-                  <img src={qrCode} alt="2FA QR Code" className="w-48 h-48" />
+                <div className="bg-white p-4 rounded-2xl shadow-xl border border-brand-blue/20">
+                  <img src={qrCode} alt="2FA QR Code" className="w-56 h-56 rounded-xl" />
                 </div>
               </div>
 
-              {/* Manual Entry */}
-              <div className="space-y-4">
+              {/* Manual Entry + Backup Codes */}
+              <div className="space-y-6">
                 <div>
-                  <Label htmlFor="secret">Or enter this key manually</Label>
-                  <div className="flex mt-1">
-                    <Input id="secret" value={secret || ""} readOnly className="font-mono" />
-                    <Button variant="outline" size="icon" onClick={copySecret} className="ml-2">
+                  <Label>Or enter this secret manually</Label>
+                  <div className="flex mt-2">
+                    <Input value={secret || ""} readOnly className="font-mono bg-muted neon-glow" />
+                    <Button variant="outline" size="icon" onClick={copySecret} className="ml-2 neon-glow">
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
 
-                <Alert>
+                <Alert className="neon-glow border-brand-blue/50">
                   <AlertTitle>Save your backup codes!</AlertTitle>
-                  <AlertDescription className="space-y-2">
-                    <p>
-                      These one-time codes can be used if you lose access to your authenticator app.
-                    </p>
+                  <AlertDescription>
+                    These one-time codes are your safety net if you lose your phone.
                     {showBackupCodes ? (
-                      <div className="font-mono text-sm bg-muted p-3 rounded break-all">
+                      <div className="mt-4 font-mono text-sm bg-black/70 p-4 rounded-xl border border-border">
                         {backupCodes.map((code, i) => (
-                          <div key={i} className="py-1">
+                          <div key={i} className="py-1 tracking-widest">
                             {code}
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <Button variant="secondary" onClick={() => setShowBackupCodes(true)}>
+                      <Button variant="secondary" onClick={() => setShowBackupCodes(true)} className="mt-3">
                         Reveal Backup Codes
                       </Button>
                     )}
                     {showBackupCodes && (
-                      <Button variant="outline" size="sm" onClick={copyBackupCodes} className="mt-2">
-                        Copy All Backup Codes
+                      <Button variant="outline" size="sm" onClick={copyBackupCodes} className="mt-3 neon-glow">
+                        Copy All Codes
                       </Button>
                     )}
                   </AlertDescription>
@@ -317,46 +322,42 @@ export default function TwoFASetup({ onSuccess }: TwoFASetupProps) {
             {/* Verification Form */}
             <form onSubmit={handleSubmit(onVerify)} className="space-y-4 border-t pt-6">
               <div>
-                <Label htmlFor="code">Verify by entering a code from your authenticator app</Label>
+                <Label htmlFor="code">Enter 6-digit code from your app</Label>
                 <Input
                   id="code"
                   placeholder="123456"
                   maxLength={6}
                   {...register("code")}
-                  className="mt-1 font-mono text-center text-lg tracking-widest"
+                  className="mt-2 font-mono text-center text-2xl tracking-[12px] neon-glow"
                 />
                 {errors.code && <p className="text-sm text-destructive mt-1">{errors.code.message}</p>}
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full h-12 neon-glow text-lg" disabled={isLoading}>
                 {isLoading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-3 h-5 w-5 animate-spin" />
                     Verifying...
                   </>
                 ) : (
-                  "Verify & Enable 2FA"
+                  "Verify & Activate 2FA"
                 )}
               </Button>
             </form>
           </div>
         )}
 
-        {/* 2FA is enabled - show status */}
+        {/* 2FA Already Enabled */}
         {isEnabled && !qrCode && (
-          <Alert>
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            <AlertTitle>2FA is Active</AlertTitle>
+          <Alert className="neon-glow border-green-500/30 bg-green-950/30">
+            <CheckCircle2 className="h-5 w-5 text-green-400" />
+            <AlertTitle className="text-green-400">2FA is Active & Protecting Your Account</AlertTitle>
             <AlertDescription className="mt-2">
-              Your account is protected with two-factor authentication.
-              <br />
-              <Button variant="link" className="px-0" onClick={disable2FA}>
-                Disable 2FA
-              </Button>
+              Great choice! Your account is now much more secure.
             </AlertDescription>
           </Alert>
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
