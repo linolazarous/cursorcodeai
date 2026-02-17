@@ -1,0 +1,47 @@
+# infra/k8s/api-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cursorcode-api
+  namespace: default
+  labels:
+    app: cursorcode-api
+    tier: backend
+spec:
+  type: ClusterIP          # Internal service (recommended with Ingress)
+  selector:
+    app: cursorcode-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+---
+# Optional: Ingress (recommended for production)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cursorcode-api
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"   # Change if using another issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.cursorcode.ai
+      secretName: cursorcode-api-tls
+  rules:
+    - host: api.cursorcode.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cursorcode-api
+                port:
+                  number: 8000
