@@ -1,4 +1,5 @@
 {
-"name": "@cursorcode/ui",
-"dependencies": { "shadcn-ui": "^0.8.0" }
+  "name": "@cursorcode/ui",
+  "main": "./index.ts",
+  "types": "./index.ts"
 }
