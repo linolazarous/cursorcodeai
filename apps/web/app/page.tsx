@@ -1,17 +1,19 @@
 // apps/web/app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+
+// Update these imports to use the UI package
+import { Button, Card, CardContent } from "@cursorcode/ui";
+
 import { ArrowRight, Sparkles, Zap, Shield, Rocket, Play, Pause } from "lucide-react";
 
 export default function LandingPage() {
   const [demoPrompt, setDemoPrompt] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
-  const videoRef = useState<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const examplePrompt = "Build a fitness tracking SaaS with Apple Watch sync, streak counters, and AI workout suggestions";
 
@@ -30,7 +32,7 @@ export default function LandingPage() {
       }, 50);
       return () => clearInterval(interval);
     }
-  }, [isTyping]);
+  }, [isTyping, examplePrompt]);
 
   const playDemo = () => {
     setIsTyping(true);
@@ -46,6 +48,9 @@ export default function LandingPage() {
       setVideoPlaying(!videoPlaying);
     }
   };
+
+  // Get current year for footer
+  const currentYear = new Date().getFullYear();
 
   return (
     <div className="min-h-screen storyboard-grid bg-background text-foreground overflow-hidden">
@@ -76,7 +81,7 @@ export default function LandingPage() {
         <div className="container mx-auto px-6 text-center max-w-5xl relative z-10">
           <div className="inline-flex items-center gap-3 mb-6 px-6 py-2 rounded-full border border-brand-blue/30 bg-card/50 animate-pulse">
             <Sparkles className="h-5 w-5 text-brand-glow" />
-            <span className="text-sm font-medium text-brand-glow">Powered by xAI’s Grok • Public Beta</span>
+            <span className="text-sm font-medium text-brand-glow">Powered by xAI's Grok • Public Beta</span>
           </div>
 
           <h1 className="text-display text-7xl md:text-8xl font-bold tracking-tighter leading-none mb-6 animate-fade-in">
@@ -87,7 +92,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-2xl text-muted-foreground max-w-2xl mx-auto mb-10 animate-fade-in delay-200">
-            The world’s most powerful autonomous AI software engineering platform.<br />
+            The world's most powerful autonomous AI software engineering platform.<br />
             Natural language → full-stack app in minutes.
           </p>
 
@@ -113,7 +118,7 @@ export default function LandingPage() {
           <Card className="cyber-card neon-glow overflow-hidden border-brand-blue/40">
             <div className="relative aspect-video bg-black">
               <video
-                ref={videoRef as any}
+                ref={videoRef}
                 src="/videos/demo-video.mp4"
                 className="w-full h-full object-cover"
                 loop
@@ -163,8 +168,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Rest of the page (How it works, Features, CTA) remains the same but with added animations */}
-      {/* ... (previous sections with added animate-fade-in classes) ... */}
+      {/* Rest of the page sections would go here (How it works, Features, etc.) */}
 
       {/* FINAL CTA */}
       <section className="py-24 border-t border-border">
@@ -183,10 +187,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Footer - Updated with dynamic year */}
       <footer className="border-t border-border py-16 bg-card">
         <div className="container mx-auto px-6 text-center text-sm text-muted-foreground">
-          © 2026 CursorCode AI • Built with Grok by xAI • All rights reserved
+          © {currentYear} CursorCode AI • Built with Grok by xAI • All rights reserved
         </div>
       </footer>
     </div>
