@@ -12,7 +12,11 @@
       "@cursorcode/types": ["../../packages/types"],
       "@cursorcode/db": ["../../packages/db"],
       "@cursorcode/ui": ["../../packages/ui"]
-    }
+    },
+    "allowJs": true,
+    "jsx": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node", "jest"]
   },
   "include": [
     "next-env.d.ts",
