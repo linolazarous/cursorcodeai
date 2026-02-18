@@ -3,12 +3,12 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
+// Update these imports to use the UI package
+import { Badge, Button, Card, Alert, Progress } from "@cursorcode/ui";
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@cursorcode/ui";
 
+// AlertDialog components might not be in your UI package yet
+// If they are, import them from @cursorcode/ui, otherwise keep as is
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,7 +70,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
   const projectId = params.id;
 
-  const res = await fetch(`\( {process.env.NEXT_PUBLIC_API_URL}/projects/ \){projectId}`, {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}`, {
     headers: {
       Cookie: `access_token=${session.accessToken || ""}`,
     },
