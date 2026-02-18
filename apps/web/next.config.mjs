@@ -1,9 +1,6 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-/**
- * Fix __dirname in ES module scope
- */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -12,19 +9,18 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
 
+  // Move outputFileTracingRoot to top level (Next.js 15+ requirement)
+  outputFileTracingRoot: path.join(__dirname, "../../"),
+
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
     },
-
     optimizePackageImports: [
       "lucide-react",
       "@radix-ui/react-label",
       "class-variance-authority",
     ],
-
-    // ✅ FIX MOVED HERE
-    outputFileTracingRoot: path.join(__dirname, "../../"),
   },
 
   transpilePackages: [
@@ -99,7 +95,6 @@ const nextConfig = {
   webpack(config, { isServer }) {
     if (!isServer && process.env.ANALYZE === "true") {
       const { BundleAnalyzerPlugin } = require("@next/bundle-analyzer");
-
       config.plugins.push(
         new BundleAnalyzerPlugin({
           analyzerMode: "static",
@@ -108,7 +103,6 @@ const nextConfig = {
         })
       );
     }
-
     return config;
   },
 };
