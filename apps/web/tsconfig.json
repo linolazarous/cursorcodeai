@@ -1,74 +1,28 @@
 {
   "extends": "../../packages/config/tsconfig.json",
-
   "compilerOptions": {
-
     "plugins": [
       {
         "name": "next"
       }
     ],
-
     "baseUrl": ".",
-
-
     "paths": {
-
-      "@/*": [
-        "../../packages/ui/*"
-      ],
-
-      "@cursorcode/ui": [
-        "../../packages/ui"
-      ],
-
-      "@cursorcode/ui/*": [
-        "../../packages/ui/*"
-      ],
-
-      "@cursorcode/types": [
-        "../../packages/types"
-      ],
-
-      "@cursorcode/db": [
-        "../../packages/db"
-      ]
-
-    },
-
-
-    "allowJs": true,
-    "jsx": "preserve",
-
-    "moduleResolution": "bundler",
-
-    "types": [
-      "node",
-      "jest"
-    ]
-
+      "@/*": ["./*"],
+      "@cursorcode/types": ["../../packages/types"],
+      "@cursorcode/db": ["../../packages/db"],
+      "@cursorcode/ui": ["../../packages/ui"]
+    }
   },
-
   "include": [
-
     "next-env.d.ts",
-
     "**/*.ts",
     "**/*.tsx",
-
     ".next/types/**/*.d.ts",
-
-    "../../packages/ui/**/*.ts",
-    "../../packages/ui/**/*.tsx",
-
-    "../../packages/types/**/*.ts",
-    "../../packages/types/**/*.tsx"
-
+    "../../packages/types/**/*.d.ts"
   ],
-
   "exclude": [
     "node_modules",
     ".next"
   ]
-
 }
