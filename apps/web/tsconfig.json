@@ -1,11 +1,17 @@
 {
-  "extends": "../../packages/config/tsconfig.json",
   "compilerOptions": {
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "incremental": true,
+
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
