@@ -85,7 +85,7 @@ export const metadata: Metadata = {
     description: "The world's most powerful autonomous AI software engineering platform powered by xAI’s Grok.",
     images: [
       {
-        url: "/og-image.png", // ← make sure this matches your video thumbnail
+        url: "/og-image.png",
         width: 1200,
         height: 630,
         alt: "CursorCode AI - Build Anything. Automatically. With AI.",
@@ -136,7 +136,6 @@ export default async function RootLayout({
       className={`${inter.variable} ${spaceGrotesk.variable} dark`}
     >
       <head>
-        {/* Preload critical assets */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <meta name="referrer" content="strict-origin-when-cross-origin" />
@@ -148,8 +147,8 @@ export default async function RootLayout({
           <QueryClientProvider client={queryClient}>
             <ThemeProvider
               attribute="class"
-              defaultTheme="dark"           {/* ← Forced dark to match logo/video */}
-              enableSystem={false}          {/* Optional: remove system toggle if you want pure dark */}
+              defaultTheme="dark"           // ← Forced dark to match logo/video
+              enableSystem={false}          // Optional: remove system toggle if you want pure dark
               disableTransitionOnChange
             >
               {children}
