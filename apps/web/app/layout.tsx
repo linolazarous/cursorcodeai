@@ -10,12 +10,11 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { auth } from "@/app/api/auth/[...nextauth]/route";
 
 // ────────────────────────────────────────────────
-// Custom monitoring – global error reporting
+// Global error monitoring
 // ────────────────────────────────────────────────
 import { reportFrontendError } from "@/lib/monitoring";
 
 if (typeof window !== "undefined") {
-  // Global sync error handler
   window.onerror = (msg, url, line, col, error) => {
     reportFrontendError(error || new Error(String(msg)), {
       source: "window.onerror",
@@ -26,17 +25,15 @@ if (typeof window !== "undefined") {
     return false;
   };
 
-  // Global async/unhandled promise rejection handler
   window.addEventListener("unhandledrejection", (event) => {
     reportFrontendError(event.reason, {
       source: "unhandledrejection",
-      promise: event.promise,
     });
   });
 }
 
 // ────────────────────────────────────────────────
-// Fonts — matched to logo + video storyboard
+// Fonts (matching logo + video)
 // ────────────────────────────────────────────────
 const inter = Inter({
   subsets: ["latin"],
@@ -64,50 +61,16 @@ export const metadata: Metadata = {
     "Grok xAI",
     "CursorCode AI",
     "AI app builder",
-    "no code AI",
-    "full-stack AI",
   ],
   authors: [{ name: "CursorCode AI Team" }],
-  creator: "CursorCode AI",
-  publisher: "CursorCode AI",
   icons: {
     icon: "/favicon.ico",
-    shortcut: "/favicon-16x16.png",
     apple: "/apple-touch-icon.png",
   },
-  manifest: "/site.webmanifest",
   openGraph: {
-    type: "website",
-    locale: "en_US",
-    url: "https://cursorcode.ai",
-    siteName: "CursorCode AI",
-    title: "CursorCode AI - Build Anything. Automatically. With AI.",
-    description: "The world's most powerful autonomous AI software engineering platform powered by xAI’s Grok.",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "CursorCode AI - Build Anything. Automatically. With AI.",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
     title: "CursorCode AI",
     description: "Build Anything. Automatically. With AI.",
-    images: ["/og-image.png"],
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
+    images: [{ url: "/og-image.png" }],
   },
 };
 
@@ -117,7 +80,6 @@ const queryClient = new QueryClient({
       staleTime: 60 * 1000,
       gcTime: 5 * 60 * 1000,
       retry: 1,
-      refetchOnWindowFocus: false,
     },
   },
 });
@@ -138,8 +100,6 @@ export default async function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <meta name="referrer" content="strict-origin-when-cross-origin" />
-        <meta name="format-detection" content="telephone=no" />
       </head>
 
       <body className="font-sans antialiased bg-background text-foreground">
@@ -147,13 +107,12 @@ export default async function RootLayout({
           <QueryClientProvider client={queryClient}>
             <ThemeProvider
               attribute="class"
-              defaultTheme="dark"           // ← Forced dark to match logo/video
-              enableSystem={false}          // Optional: remove system toggle if you want pure dark
+              defaultTheme="dark"        // Forced dark mode to match logo + video
+              enableSystem={false}       // Disable system theme switching
               disableTransitionOnChange
             >
               {children}
 
-              {/* Global Toaster */}
               <Toaster position="top-right" richColors closeButton />
             </ThemeProvider>
           </QueryClientProvider>
