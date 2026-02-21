@@ -1,9 +1,7 @@
 // apps/web/components/CreditMeter.tsx
 "use client";
 
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Progress, Badge, Card, CardContent } from "@cursorcode/ui";
 import { Zap } from "lucide-react";
 
 interface CreditMeterProps {
