@@ -19,16 +19,13 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@cursorcode/ui";
-
-import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@cursorcode/ui";
 
 import {
   BarChart,
