@@ -2,7 +2,6 @@
   "name": "@cursorcode/db",
   "version": "1.0.0",
   "private": true,
-  "description": "Database layer for CursorCode AI (Prisma + shared models)",
   "main": "./index.ts",
   "types": "./index.ts",
   "scripts": {
