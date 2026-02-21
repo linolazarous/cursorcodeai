@@ -1,6 +1,6 @@
 // packages/ui/index.ts
-// Barrel file - Central export point for all UI components
-// Import everything from here: import { Button, Card, Input } from "@cursorcode/ui";
+// Barrel file — Central export point for @cursorcode/ui
+// Import everything from here: import { Button, Card, Input, useToast } from "@cursorcode/ui";
 
 // Buttons & Basic
 export * from "./components/button";
@@ -22,8 +22,17 @@ export * from "./components/badge";
 // Navigation
 export * from "./components/tabs";
 
-// Re-export common utilities (if you have them)
-export { cn } from "./lib/utils"; // optional, if you have a shared utils file
+// Data Display
+export * from "./components/table";
+
+// Overlays & Dialogs
+export * from "./components/alert-dialog";
+
+// Toast
+export * from "./components/use-toast";
+
+// Re-export common utilities
+export { cn } from "./lib/utils";
 
 // Type exports for convenience
 export type { ButtonProps } from "./components/button";
