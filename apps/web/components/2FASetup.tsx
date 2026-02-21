@@ -1,16 +1,24 @@
 // apps/web/components/2FASetup.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+// All UI components from the shared @cursorcode/ui package
 import {
+  Button,
+  Input,
+  Label,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Alert,
+  AlertDescription,
+  AlertTitle,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -20,8 +28,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { useToast } from "@/components/ui/use-toast";
+  useToast,
+} from "@cursorcode/ui";
+
 import { Copy, Loader2, CheckCircle2, XCircle, ShieldCheck } from "lucide-react";
 import { useCopyToClipboard } from "usehooks-ts";
 import { useSession } from "next-auth/react";
@@ -34,7 +43,7 @@ type FormData = z.infer<typeof formSchema>;
 
 type TwoFASetupProps = {
   onSuccess?: () => void;
-  mode?: "enable" | "disable"; // Added for flexibility from dashboard
+  mode?: "enable" | "disable";
 };
 
 export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupProps) {
@@ -360,4 +369,5 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
       </CardContent>
     </Card>
   );
+  
 }
