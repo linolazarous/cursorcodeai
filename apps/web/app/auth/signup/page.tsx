@@ -10,10 +10,22 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 
-// Update these imports to use the UI package
-import { Button, Input, Label, Card, Alert } from "@cursorcode/ui";
-import { CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@cursorcode/ui";
-import { useToast } from "@/components/ui/use-toast";
+// All UI components from the shared @cursorcode/ui package
+import {
+  Button,
+  Input,
+  Label,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  useToast,
+} from "@cursorcode/ui";
 
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email"),
