@@ -3,13 +3,19 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-// Update these imports to use the UI package
-import { Badge, Button, Card, Alert, Progress } from "@cursorcode/ui";
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@cursorcode/ui";
-
-// AlertDialog components might not be in your UI package yet
-// If they are, import them from @cursorcode/ui, otherwise keep as is
+// All UI components from the shared @cursorcode/ui package
 import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Progress,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -19,20 +25,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+  useToast,
+} from "@cursorcode/ui";
 
-import { Copy, ExternalLink, Eye, Trash2, AlertCircle, ShieldCheck } from "lucide-react";
+import { Copy, ExternalLink, Eye, Trash2, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Suspense } from "react";
 
-// Client component for Copy button (to avoid hydration issues)
+// Client component for Copy button
 function CopyButton({ text }: { text: string }) {
   "use client";
+  const { toast } = useToast();
+
   const copyToClipboard = async () => {
     await navigator.clipboard.writeText(text);
-    // Sonner toast is available globally via layout
-    const { toast } = await import("@/components/ui/use-toast");
-    toast({ title: "Copied!", description: "Project ID copied to clipboard" });
+    toast({
+      title: "Copied!",
+      description: "Project ID copied to clipboard",
+    });
   };
 
   return (
@@ -70,7 +80,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
   const projectId = params.id;
 
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}`, {
+  const res = await fetch(`\( {process.env.NEXT_PUBLIC_API_URL}/projects/ \){projectId}`, {
     headers: {
       Cookie: `access_token=${session.accessToken || ""}`,
     },
