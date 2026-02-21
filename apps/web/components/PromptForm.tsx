@@ -5,14 +5,22 @@ import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/components/ui/use-toast";
+
+// All UI components from the shared @cursorcode/ui package
+import {
+  Button,
+  Textarea,
+  Progress,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  useToast,
+} from "@cursorcode/ui";
+
 import { Loader2, Copy, Send, CheckCircle2 } from "lucide-react";
 import { useCopyToClipboard } from "usehooks-ts";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Prompt must be at least 10 characters").max(2000, "Prompt too long"),
@@ -285,4 +293,4 @@ export default function PromptForm() {
       </Card>
     </div>
   );
-                                    }
+}
