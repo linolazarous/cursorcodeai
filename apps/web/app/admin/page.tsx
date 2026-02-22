@@ -1,7 +1,6 @@
 // apps/web/app/admin/page.tsx
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";           // ← Fixed for NextAuth v5
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { auth } from "@/app/api/auth/[...nextauth]/route";
 
 // All UI components from the shared @cursorcode/ui package
 import {
@@ -71,7 +70,7 @@ const recentUsers = [
 ];
 
 export default async function AdminDashboard() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user?.roles?.includes("admin")) {
     redirect("/dashboard");
