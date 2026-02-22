@@ -12,6 +12,7 @@
     "test": "turbo run test"
   },
   "devDependencies": {
-    "turbo": "^1.13.4"
+    "turbo": "^1.13.4",
+    "prisma": "^5.17.0"          // ← This is the key fix
   }
 }
