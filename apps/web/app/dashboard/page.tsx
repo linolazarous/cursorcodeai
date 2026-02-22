@@ -1,7 +1,6 @@
 // apps/web/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { auth } from "@/app/api/auth/[...nextauth]/route";
 import { CreditMeter } from "@/components/CreditMeter";
 import PromptForm from "@/components/PromptForm";
 import ProjectList from "@/components/ProjectList";
@@ -26,7 +25,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription as AlertDialogDesc,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -39,7 +38,7 @@ import { Suspense } from "react";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect("/auth/signin");
@@ -104,9 +103,9 @@ export default async function DashboardPage() {
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>Disable Two-Factor Authentication?</AlertDialogTitle>
-                      <AlertDialogDesc>
+                      <AlertDialogDescription>
                         This will lower your account security. You will need a current 2FA code or backup code to confirm.
-                      </AlertDialogDesc>
+                      </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
