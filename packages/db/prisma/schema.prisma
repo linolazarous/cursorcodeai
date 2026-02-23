@@ -1,12 +1,13 @@
 // packages/db/prisma/schema.prisma
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")   // ← Required for Prisma 5+
 }
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearchPostgres"] // updated feature name
-  binaryTargets   = ["native", "debian-openssl-3.0.x"] // required for Vercel Linux
+  previewFeatures = ["fullTextSearch"]   // ← Correct name for Prisma 5
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 // ====================== USER ======================
@@ -42,7 +43,7 @@ model Project {
   id              String    @id @default(uuid())
   title           String
   prompt          String    @db.Text
-  status          String    @default("queued") // queued, building, completed, failed, deployed
+  status          String    @default("queued")
 
   progress        Int       @default(0)
   current_agent   String?
