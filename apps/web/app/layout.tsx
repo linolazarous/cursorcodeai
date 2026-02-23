@@ -6,13 +6,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
-import { auth } from "@/app/api/auth/[...nextauth]/route";
+import { ThemeProvider } from "../components/theme-provider";
+import { auth } from "./api/auth/[...nextauth]/route";
 
 // ────────────────────────────────────────────────
 // Global error monitoring
 // ────────────────────────────────────────────────
-import { reportFrontendError } from "@/lib/monitoring";
+import { reportFrontendError } from "../lib/monitoring";
 
 if (typeof window !== "undefined") {
   window.onerror = (msg, url, line, col, error) => {
