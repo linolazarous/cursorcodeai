@@ -1,10 +1,12 @@
 // apps/web/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
-import { auth } from "../api/auth/[...nextauth]/route";   // ← Correct relative path
-import { CreditMeter } from "@/components/CreditMeter";
-import PromptForm from "@/components/PromptForm";
-import ProjectList from "@/components/ProjectList";
-import TwoFASetup from "@/components/2FASetup";
+import { auth } from "../api/auth/[...nextauth]/route";
+
+// Custom components (relative imports — fixes Vercel alias issues)
+import { CreditMeter } from "../../components/CreditMeter";
+import PromptForm from "../../components/PromptForm";
+import ProjectList from "../../components/ProjectList";
+import TwoFASetup from "../../components/2FASetup";
 
 // All UI components from the shared @cursorcode/ui package
 import {
