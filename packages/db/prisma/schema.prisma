@@ -1,13 +1,12 @@
 // packages/db/prisma/schema.prisma
-
 datasource db {
   provider = "postgresql"
-  // url removed; Prisma 7+ uses prisma.config.ts for connection
 }
 
 generator client {
-  provider = "prisma-client-js"
-  previewFeatures = ["fullTextSearch"] // Useful for future search on prompts
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"] // updated feature name
+  binaryTargets   = ["native", "debian-openssl-3.0.x"] // required for Vercel Linux
 }
 
 // ====================== USER ======================
@@ -24,7 +23,7 @@ model User {
   
   // 2FA
   totp_enabled  Boolean   @default(false)
-  totp_secret   String?   // Encrypted secret
+  totp_secret   String?
 
   // Timestamps
   createdAt     DateTime  @default(now())
@@ -45,12 +44,10 @@ model Project {
   prompt          String    @db.Text
   status          String    @default("queued") // queued, building, completed, failed, deployed
 
-  // Progress & Logs
   progress        Int       @default(0)
   current_agent   String?
   logs            String[]  @default([])
 
-  // Deployment info
   deploy_url      String?
   preview_url     String?
   code_repo_url   String?
