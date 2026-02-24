@@ -2,6 +2,7 @@
   "name": "cursorcode-ai",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "yarn@1.22.19",
 
   "workspaces": [
     "apps/*",
@@ -15,7 +16,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "clean": "turbo run clean && rm -rf node_modules .turbo apps/web/.next"
   },
 
   "devDependencies": {
