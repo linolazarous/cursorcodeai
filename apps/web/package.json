@@ -1,73 +1,52 @@
-{
-  "name": "@cursorcode/web",
-  "version": "1.4.4",
-  "private": true,
+"dependencies": {
 
-  "engines": {
-    "node": ">=20.0.0"
-  },
+  "next": "15.2.4",
 
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit"
-  },
+  "react": "18.3.1",
+  "react-dom": "18.3.1",
 
-  "dependencies": {
+  "next-auth": "5.0.0-beta.20",
 
-    "next": "15.2.4",
+  "next-themes": "0.4.6",
 
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+  "react-hook-form": "7.54.2",
+  "@hookform/resolvers": "3.9.1",
 
-    "next-auth": "5.0.0-beta.20",
+  "zod": "3.24.1",
 
-    "next-themes": "0.4.6",
+  "axios": "1.7.9",
 
-    "react-hook-form": "7.54.2",
-    "@hookform/resolvers": "3.9.1",
+  "lucide-react": "0.473.0",
 
-    "zod": "3.24.1",
+  "class-variance-authority": "0.7.1",
+  "clsx": "2.1.1",
+  "tailwind-merge": "2.6.0",
 
-    "axios": "1.7.9",
+  "sonner": "1.7.4",
 
-    "lucide-react": "0.473.0",
+  "recharts": "2.15.1",
 
-    "class-variance-authority": "0.7.1",
-    "clsx": "2.1.1",
-    "tailwind-merge": "2.6.0",
+  "date-fns": "3.6.0",
 
-    "sonner": "1.7.4",
+  "usehooks-ts": "3.1.1",
 
-    "recharts": "2.15.1",
+  "@tanstack/react-query": "5.66.0",
 
-    "date-fns": "3.6.0",
+  "@cursorcode/ui": "1.0.0",
+  "@cursorcode/db": "1.0.0",
+  "@cursorcode/types": "1.0.0",
 
-    "usehooks-ts": "3.1.1",
+  "typescript": "5.7.3",
+  "@types/node": "22.13.5",
+  "@types/react": "18.3.12",
+  "@types/react-dom": "18.3.1"
+},
 
-    "@tanstack/react-query": "5.66.0",
+"devDependencies": {
 
-    "@cursorcode/ui": "1.0.0",
-    "@cursorcode/db": "1.0.0",
-    "@cursorcode/types": "1.0.0"
-  },
+  "tailwindcss": "3.4.17",
 
-  "devDependencies": {
+  "postcss": "8.5.3",
 
-    "typescript": "5.7.3",
-
-    "@types/node": "22.13.5",
-
-    "@types/react": "18.3.12",
-
-    "@types/react-dom": "18.3.1",
-
-    "tailwindcss": "3.4.17",
-
-    "postcss": "8.5.3",
-
-    "autoprefixer": "10.4.20"
-  }
+  "autoprefixer": "10.4.20"
 }
