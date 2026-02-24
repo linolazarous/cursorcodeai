@@ -1,6 +1,6 @@
 {
   "name": "@cursorcode/web",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "private": true,
 
   "engines": {
@@ -8,7 +8,7 @@
   },
 
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -17,10 +17,10 @@
 
   "dependencies": {
 
-    "next": "16.1.6",
+    "next": "15.2.4",
 
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
 
     "next-auth": "5.0.0-beta.20",
 
@@ -43,7 +43,7 @@
 
     "recharts": "2.15.1",
 
-    "date-fns": "4.1.0",
+    "date-fns": "3.6.0",
 
     "usehooks-ts": "3.1.1",
 
@@ -58,8 +58,8 @@
 
     "typescript": "^5.7.3",
 
-    "@types/react": "^19.0.8",
-    "@types/react-dom": "^19.0.3",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
 
     "@types/node": "^22.13.5",
 
@@ -69,5 +69,4 @@
 
     "autoprefixer": "10.4.20"
   }
-
 }
