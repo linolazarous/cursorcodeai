@@ -7,44 +7,47 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
 
   reactStrictMode: true,
 
+  /**
+   * ✅ REQUIRED for Next.js 16
+   * Fixes Turbopack + webpack conflict
+   */
+  turbopack: {
+    resolveAlias: {
+      "@": path.resolve(__dirname, "../../packages/ui"),
+    },
+  },
 
   experimental: {
     serverActions: {
-      bodySizeLimit: "10mb"
-    }
+      bodySizeLimit: "10mb",
+    },
   },
-
 
   transpilePackages: [
     "@cursorcode/ui",
     "@cursorcode/types",
-    "@cursorcode/db"
+    "@cursorcode/db",
   ],
-
-
 
   images: {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**"
-      }
-    ]
+        hostname: "**",
+      },
+    ],
   },
 
-
-
+  /**
+   * ✅ Keep webpack for backward compatibility
+   * Turbopack will ignore it, webpack will use it if needed
+   */
   webpack: (config) => {
-
-    /**
-     * THIS IS THE CRITICAL FIX
-     */
 
     config.resolve.alias["@"] = path.resolve(
       __dirname,
@@ -52,9 +55,8 @@ const nextConfig = {
     );
 
     return config;
-  }
+  },
 
 };
-
 
 export default nextConfig;
