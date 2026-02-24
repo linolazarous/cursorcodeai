@@ -1,3 +1,4 @@
+// apps/web/next.config.mjs
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -9,18 +10,7 @@ const __dirname = path.dirname(__filename);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-
   reactStrictMode: true,
-
-  /**
-   * ✅ REQUIRED for Next.js 16
-   * Fixes Turbopack + webpack conflict
-   */
-  turbopack: {
-    resolveAlias: {
-      "@": path.resolve(__dirname, "../../packages/ui"),
-    },
-  },
 
   experimental: {
     serverActions: {
@@ -42,21 +32,6 @@ const nextConfig = {
       },
     ],
   },
-
-  /**
-   * ✅ Keep webpack for backward compatibility
-   * Turbopack will ignore it, webpack will use it if needed
-   */
-  webpack: (config) => {
-
-    config.resolve.alias["@"] = path.resolve(
-      __dirname,
-      "../../packages/ui"
-    );
-
-    return config;
-  },
-
 };
 
 export default nextConfig;
