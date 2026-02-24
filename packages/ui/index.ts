@@ -1,6 +1,14 @@
 // packages/ui/index.ts
-// Barrel file — Central export point for @cursorcode/ui
-// Import everything from here: import { Button, Card, Input, useToast } from "@cursorcode/ui";
+// Barrel file — Central export point for the entire @cursorcode/ui package
+// Usage: import { Button, Card, Input, cn, useToast } from "@cursorcode/ui";
+
+
+// ==================== CORE UTILITIES ====================
+export { cn } from "./lib/utils";
+export type { ClassValue } from "clsx";
+
+
+// ==================== COMPONENTS ====================
 
 // Buttons & Basic
 export * from "./components/button";
@@ -28,12 +36,19 @@ export * from "./components/table";
 // Overlays & Dialogs
 export * from "./components/alert-dialog";
 
-// Toast
+// Toast / Hooks
 export * from "./components/use-toast";
 
-// Re-export common utilities
-export { cn } from "./lib/utils";
 
-// Type exports for convenience
+// ==================== TYPE EXPORTS (best DX) ====================
+
 export type { ButtonProps } from "./components/button";
 export type { BadgeProps } from "./components/badge";
+
+// Add these as you use more components (optional but recommended):
+// export type { CardProps } from "./components/card";
+// export type { InputProps } from "./components/input";
+// export type { TextareaProps } from "./components/textarea";
+// export type { LabelProps } from "./components/label";
+// export type { CheckboxProps } from "./components/checkbox";
+// etc.
