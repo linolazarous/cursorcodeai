@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 
 // All UI components from the shared @cursorcode/ui package
 import {
@@ -25,7 +25,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  toast, // ← Sonner toast (directly exported by @cursorcode/ui)
+  toast,
 } from "@cursorcode/ui";
 
 const formSchema = z.object({
@@ -45,6 +45,7 @@ export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [show2FA, setShow2FA] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);   // ← NEW
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -82,7 +83,6 @@ export default function SignInPage() {
         return;
       }
 
-      // Success
       toast.success("Welcome back!", {
         description: "Redirecting to dashboard...",
         duration: 3000,
@@ -202,14 +202,26 @@ export default function SignInPage() {
                     Forgot password?
                   </Link>
                 </div>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••••••"
-                  {...register("password")}
-                  disabled={isLoading}
-                  className="neon-glow"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••••••"
+                    {...register("password")}
+                    disabled={isLoading}
+                    className="neon-glow pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
                 {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
               </div>
 
