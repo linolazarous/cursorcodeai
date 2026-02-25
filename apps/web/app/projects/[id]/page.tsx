@@ -24,32 +24,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-  useToast,
+  toast,          // ← direct import (Sonner)
 } from "@cursorcode/ui";
 
 import { Copy, ExternalLink, Eye, Trash2, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { Suspense } from "react";
-
-// Client component for Copy button
-function CopyButton({ text }: { text: string }) {
-  "use client";
-  const { toast } = useToast();
-
-  const copyToClipboard = async () => {
-    await navigator.clipboard.writeText(text);
-    toast({
-      title: "Copied!",
-      description: "Project ID copied to clipboard",
-    });
-  };
-
-  return (
-    <Button variant="ghost" size="icon" onClick={copyToClipboard} className="neon-glow">
-      <Copy className="h-4 w-4" />
-    </Button>
-  );
-}
 
 interface Project {
   id: string;
@@ -69,6 +48,25 @@ interface Project {
 }
 
 export const dynamic = "force-dynamic";
+
+// Client component for Copy button
+function CopyButton({ text }: { text: string }) {
+  "use client";
+
+  const copyToClipboard = async () => {
+    await navigator.clipboard.writeText(text);
+    toast.success("Copied!", {
+      description: "Project ID copied to clipboard",
+      duration: 2000,
+    });
+  };
+
+  return (
+    <Button variant="ghost" size="icon" onClick={copyToClipboard} className="neon-glow">
+      <Copy className="h-4 w-4" />
+    </Button>
+  );
+}
 
 export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
   const session = await auth();
