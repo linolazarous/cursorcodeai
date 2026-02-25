@@ -1,20 +1,20 @@
 // packages/types/next-auth.d.ts
 import type { DefaultSession } from "next-auth";
 
+/**
+ * Extended User type (matches your Prisma/DB model)
+ */
 declare module "next-auth" {
-  /**
-   * Extended User type (matches your Prisma/DB model)
-   */
   interface User {
     id: string;
     email: string;
     name?: string | null;
     image?: string | null;
 
-    // Custom fields
-    roles: string[];
-    plan: string;
-    credits: number;
+    // Custom fields (all optional for real-world session safety)
+    roles?: string[];
+    plan?: string;
+    credits?: number;
     org_id?: string;
     totp_enabled?: boolean;
   }
@@ -24,6 +24,7 @@ declare module "next-auth" {
    */
   interface Session {
     user: User & DefaultSession["user"];
+    accessToken?: string;   // ← Added for dashboard API calls
   }
 }
 
@@ -31,10 +32,13 @@ declare module "next-auth/jwt" {
   interface JWT {
     id: string;
     email: string;
-    roles: string[];
-    plan: string;
-    credits: number;
+
+    // Custom fields (all optional)
+    roles?: string[];
+    plan?: string;
+    credits?: number;
     org_id?: string;
     totp_enabled?: boolean;
+    accessToken?: string;   // ← Added so JWT callbacks can include it
   }
 }
