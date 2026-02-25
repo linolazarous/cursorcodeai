@@ -28,7 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-  useToast,
+  toast, // ← direct Sonner import (consistent with all other pages)
 } from "@cursorcode/ui";
 
 import { Copy, Loader2, CheckCircle2, XCircle, ShieldCheck } from "lucide-react";
@@ -48,7 +48,6 @@ type TwoFASetupProps = {
 
 export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupProps) {
   const { data: session, update } = useSession();
-  const { toast } = useToast();
   const [copiedText, copyToClipboard] = useCopyToClipboard();
 
   const [isEnabled, setIsEnabled] = useState(session?.user?.totp_enabled || false);
@@ -91,15 +90,12 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
       setBackupCodes(data.backup_codes);
       setShowBackupCodes(true);
 
-      toast({
-        title: "2FA Setup Ready",
+      toast.success("2FA Setup Ready", {
         description: "Scan the QR code with your authenticator app.",
       });
     } catch (err: any) {
       setError(err.message);
-      toast({
-        variant: "destructive",
-        title: "Setup Failed",
+      toast.error("Setup Failed", {
         description: err.message,
       });
     } finally {
@@ -127,8 +123,7 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
 
       await update({ totp_enabled: true });
 
-      toast({
-        title: "2FA Enabled Successfully",
+      toast.success("2FA Enabled Successfully", {
         description: "Your account is now protected with two-factor authentication.",
       });
 
@@ -142,9 +137,7 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
       onSuccess?.();
     } catch (err: any) {
       setError(err.message);
-      toast({
-        variant: "destructive",
-        title: "Verification Failed",
+      toast.error("Verification Failed", {
         description: err.message,
       });
     } finally {
@@ -175,8 +168,7 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
 
       await update({ totp_enabled: false });
 
-      toast({
-        title: "2FA Disabled",
+      toast.success("2FA Disabled", {
         description: "Two-factor authentication has been turned off.",
       });
 
@@ -184,9 +176,7 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
       onSuccess?.();
     } catch (err: any) {
       setError(err.message);
-      toast({
-        variant: "destructive",
-        title: "Disable Failed",
+      toast.error("Disable Failed", {
         description: err.message,
       });
     } finally {
@@ -197,14 +187,18 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
   const copySecret = () => {
     if (secret) {
       copyToClipboard(secret);
-      toast({ title: "Secret Copied", description: "Manual entry key copied" });
+      toast.success("Secret Copied", {
+        description: "Manual entry key copied",
+      });
     }
   };
 
   const copyBackupCodes = () => {
     if (backupCodes.length) {
       copyToClipboard(backupCodes.join("\n"));
-      toast({ title: "Backup Codes Copied", description: "Save these securely!" });
+      toast.success("Backup Codes Copied", {
+        description: "Save these securely!",
+      });
     }
   };
 
@@ -369,5 +363,4 @@ export default function TwoFASetup({ onSuccess, mode = "enable" }: TwoFASetupPro
       </CardContent>
     </Card>
   );
-  
 }
