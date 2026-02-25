@@ -15,7 +15,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  useToast,
+  toast, // ← direct Sonner import (consistent pattern)
 } from "@cursorcode/ui";
 
 import { Loader2, Copy, Send, CheckCircle2 } from "lucide-react";
@@ -40,7 +40,6 @@ export default function PromptForm() {
   const [statusHistory, setStatusHistory] = useState<AgentStatus[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [copiedText, copyToClipboard] = useCopyToClipboard();
-  const { toast } = useToast();
   const router = useRouter();
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -89,13 +88,15 @@ export default function PromptForm() {
 
         if (data.status === "completed" || data.status === "failed") {
           setIsPolling(false);
-          toast({
-            title: data.status === "completed" ? "Project Ready!" : "Build Failed",
-            description: data.status === "completed"
-              ? "Your app has been generated and deployed."
-              : data.error_message || "Generation failed.",
-            variant: data.status === "completed" ? "default" : "destructive",
-          });
+          if (data.status === "completed") {
+            toast.success("Project Ready!", {
+              description: "Your app has been generated and deployed.",
+            });
+          } else {
+            toast.error("Build Failed", {
+              description: data.error_message || "Generation failed.",
+            });
+          }
         }
       } catch (err) {
         console.error("Polling error:", err);
@@ -103,7 +104,7 @@ export default function PromptForm() {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [projectId, isPolling, toast]);
+  }, [projectId, isPolling]);
 
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
@@ -128,16 +129,13 @@ export default function PromptForm() {
       setProjectId(result.project_id);
       setIsPolling(true);
 
-      toast({
-        title: "Generation Started",
+      toast.success("Generation Started", {
         description: `Project ID: ${result.project_id}`,
       });
 
       reset();
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Generation Failed",
+      toast.error("Generation Failed", {
         description: error.message || "Please try again.",
       });
     } finally {
@@ -147,7 +145,9 @@ export default function PromptForm() {
 
   const copyPrompt = () => {
     copyToClipboard(promptValue);
-    toast({ title: "Prompt Copied", description: "Ready to reuse" });
+    toast.success("Prompt Copied", {
+      description: "Ready to reuse",
+    });
   };
 
   return (
