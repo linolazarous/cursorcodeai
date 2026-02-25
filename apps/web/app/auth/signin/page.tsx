@@ -31,7 +31,11 @@ import {
 const formSchema = z.object({
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(1, "Password is required"),
-  totp_code: z.string().optional().regex(/^\d{6}$/, "2FA code must be 6 digits").or(z.literal("")),
+  // Fixed Zod schema for totp_code
+  totp_code: z.union([
+    z.literal(""),
+    z.string().regex(/^\d{6}$/, "2FA code must be 6 digits"),
+  ]).optional(),
   rememberMe: z.boolean().optional(),
 });
 
@@ -103,7 +107,6 @@ export default function SignInPage() {
     setError(null);
 
     try {
-      // Step 1: Get challenge options from your backend
       const optionsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/webauthn/login/options`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -114,13 +117,11 @@ export default function SignInPage() {
 
       const options = await optionsRes.json();
 
-      // Step 2: Trigger native biometric prompt
       const authResult = await startAuthentication({
         optionsJSON: options,
         useBrowserAutofill: true,
       });
 
-      // Step 3: Verify with backend
       const verificationRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/webauthn/login/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,16 +132,13 @@ export default function SignInPage() {
       const result = await verificationRes.json();
 
       if (verificationRes.ok && result.success) {
-        toast.success("Biometric login successful", {
-          description: "Welcome back!",
-        });
+        toast.success("Biometric login successful", { description: "Welcome back!" });
         router.push(callbackUrl);
         router.refresh();
       } else {
         throw new Error(result.error || "Biometric verification failed");
       }
     } catch (err: any) {
-      console.error(err);
       const msg = err.message?.includes("AbortError") 
         ? "Biometric prompt was cancelled" 
         : (err.message || "Biometric login failed");
@@ -159,7 +157,6 @@ export default function SignInPage() {
   return (
     <div className="min-h-screen storyboard-grid bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* Logo & Tagline */}
         <div className="text-center mb-10">
           <h1 className="text-display text-5xl font-bold tracking-tighter neon-glow">
             CursorCode AI
@@ -186,7 +183,6 @@ export default function SignInPage() {
               </Alert>
             )}
 
-            {/* 🔥 Biometrics Button */}
             <Button
               onClick={handleBiometricSignIn}
               disabled={biometricLoading}
@@ -214,16 +210,13 @@ export default function SignInPage() {
               </div>
             </div>
 
-            {/* OAuth Buttons */}
             <div className="grid gap-4">
-              {/* Google & GitHub buttons (unchanged from before) */}
               <Button
                 variant="outline"
                 onClick={() => handleOAuthSignIn("google")}
                 disabled={isLoading}
                 className="h-12 neon-glow"
               >
-                {/* ... Google SVG ... */}
                 Continue with Google
               </Button>
 
@@ -233,14 +226,23 @@ export default function SignInPage() {
                 disabled={isLoading}
                 className="h-12 neon-glow"
               >
-                {/* ... GitHub SVG ... */}
                 Continue with GitHub
               </Button>
             </div>
 
-            {/* Email / Password Form (with visibility toggle) */}
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              {/* Email field... (unchanged) */}
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  {...register("email")}
+                  disabled={isLoading}
+                  className="neon-glow"
+                />
+                {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+              </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -272,7 +274,23 @@ export default function SignInPage() {
                 {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
               </div>
 
-              {/* 2FA field (unchanged) */}
+              {show2FA && (
+                <div className="space-y-2">
+                  <Label htmlFor="totp_code">Two-Factor Code</Label>
+                  <Input
+                    id="totp_code"
+                    placeholder="123456"
+                    maxLength={6}
+                    {...register("totp_code")}
+                    disabled={isLoading}
+                    className="font-mono text-center tracking-[8px] neon-glow text-xl"
+                  />
+                  {errors.totp_code && <p className="text-sm text-destructive">{errors.totp_code.message}</p>}
+                  <p className="text-xs text-muted-foreground text-center">
+                    Enter the 6-digit code from your authenticator app
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center space-x-2">
                 <Checkbox id="rememberMe" {...register("rememberMe")} />
