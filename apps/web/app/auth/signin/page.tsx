@@ -25,7 +25,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  useToast,
+  toast, // ← Sonner toast (directly exported by @cursorcode/ui)
 } from "@cursorcode/ui";
 
 const formSchema = z.object({
@@ -40,7 +40,6 @@ type FormData = z.infer<typeof formSchema>;
 export default function SignInPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { toast } = useToast();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
   const [isLoading, setIsLoading] = useState(false);
@@ -83,7 +82,12 @@ export default function SignInPage() {
         return;
       }
 
-      toast({ title: "Welcome back!", description: "Redirecting to dashboard..." });
+      // Success
+      toast.success("Welcome back!", {
+        description: "Redirecting to dashboard...",
+        duration: 3000,
+      });
+
       router.push(callbackUrl);
       router.refresh();
     } catch (err) {
