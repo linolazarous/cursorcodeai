@@ -26,25 +26,48 @@ import {
   TableRow,
 } from "@cursorcode/ui";
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { Users, DollarSign, CreditCard, Zap, AlertCircle } from "lucide-react";
 
-import {
-  Users,
-  DollarSign,
-  CreditCard,
-  Zap,
-  AlertCircle,
-} from "lucide-react";
+// Client-only chart component (Recharts cannot run on the server)
+function RevenueChart() {
+  "use client";
 
-// Mock data (replace with real API call in production)
+  const {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+  } = require("recharts");
+
+  const revenueData = [
+    { month: "Jan", revenue: 4200 },
+    { month: "Feb", revenue: 5800 },
+    { month: "Mar", revenue: 7200 },
+    { month: "Apr", revenue: 8900 },
+    { month: "May", revenue: 10500 },
+    { month: "Jun", revenue: 12480 },
+  ];
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={revenueData}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+        <XAxis dataKey="month" tick={{ fill: "#94A3B8" }} />
+        <YAxis tick={{ fill: "#94A3B8" }} />
+        <Tooltip
+          contentStyle={{ backgroundColor: "#111827", border: "none", borderRadius: "12px" }}
+          formatter={(value: number) => [`\[ {value.toLocaleString()}`, "Revenue"]}
+        />
+        <Bar dataKey="revenue" fill="#1E88E5" radius={[6, 6, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// Mock data (replace with real API calls later)
 const stats = {
   totalUsers: 1248,
   activeSubscriptions: 342,
@@ -52,15 +75,6 @@ const stats = {
   totalProjects: 2876,
   failedBuilds: 42,
 };
-
-const revenueData = [
-  { month: "Jan", revenue: 4200 },
-  { month: "Feb", revenue: 5800 },
-  { month: "Mar", revenue: 7200 },
-  { month: "Apr", revenue: 8900 },
-  { month: "May", revenue: 10500 },
-  { month: "Jun", revenue: 12480 },
-];
 
 const recentUsers = [
   { id: 1, email: "user1@example.com", plan: "pro", joined: "2 hours ago", status: "active" },
@@ -108,7 +122,7 @@ export default async function AdminDashboard() {
           {[
             { label: "Total Users", value: stats.totalUsers.toLocaleString(), icon: Users, change: "+12% this month" },
             { label: "Active Subscriptions", value: stats.activeSubscriptions.toLocaleString(), icon: CreditCard, change: "78% retention" },
-            { label: "Monthly Revenue", value: `\[ {stats.monthlyRevenue.toLocaleString()}`, icon: DollarSign, change: "+18.2% this month" },
+            { label: "Monthly Revenue", value: ` \]{stats.monthlyRevenue.toLocaleString()}`, icon: DollarSign, change: "+18.2% this month" },
             { label: "Total Projects", value: stats.totalProjects.toLocaleString(), icon: Zap, change: `${stats.failedBuilds} failed builds` },
           ].map((stat, i) => (
             <Card key={i} className="cyber-card neon-glow border-brand-blue/30">
@@ -143,18 +157,7 @@ export default async function AdminDashboard() {
                   <CardDescription>Last 6 months</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[380px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={revenueData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                      <XAxis dataKey="month" tick={{ fill: "#94A3B8" }} />
-                      <YAxis tick={{ fill: "#94A3B8" }} />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: "#111827", border: "none", borderRadius: "12px" }}
-                        formatter={(value: number) => [` \]{value.toLocaleString()}`, "Revenue"]}
-                      />
-                      <Bar dataKey="revenue" fill="#1E88E5" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <RevenueChart />
                 </CardContent>
               </Card>
 
