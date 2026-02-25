@@ -1,6 +1,6 @@
 // apps/web/app/projects/[id]/page.tsx
 import { notFound, redirect } from "next/navigation";
-import { auth } from "../../api/auth/[...nextauth]/route";   // ← Relative path (matches dashboard & admin)
+import { auth } from "../../api/auth/[...nextauth]/route";
 
 // All UI components from the shared @cursorcode/ui package
 import {
