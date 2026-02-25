@@ -16,7 +16,6 @@
   },
 
   "dependencies": {
-
     "next": "15.2.4",
 
     "react": "18.3.1",
@@ -53,6 +52,8 @@
     "@cursorcode/db": "1.0.0",
     "@cursorcode/types": "1.0.0",
 
+    "@simplewebauthn/browser": "^13.1.0",
+
     "typescript": "5.7.3",
     "@types/node": "22.13.5",
     "@types/react": "18.3.12",
@@ -60,12 +61,10 @@
   },
 
   "devDependencies": {
-
     "tailwindcss": "3.4.17",
 
     "postcss": "8.5.3",
 
     "autoprefixer": "10.4.20"
   }
-
 }
