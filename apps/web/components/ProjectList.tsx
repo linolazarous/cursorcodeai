@@ -88,12 +88,7 @@ export default function ProjectList({ initialProjects }: ProjectListProps) {
 
           <CardFooter className="flex gap-2 pt-2">
             {project.preview_url && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="neon-glow flex-1"
-                asChild
-              >
+              <Button variant="outline" size="sm" className="neon-glow flex-1" asChild>
                 <a href={project.preview_url} target="_blank" rel="noopener noreferrer">
                   <Eye className="mr-2 h-4 w-4" />
                   Preview
@@ -102,12 +97,7 @@ export default function ProjectList({ initialProjects }: ProjectListProps) {
             )}
 
             {project.deploy_url && (
-              <Button
-                variant="default"
-                size="sm"
-                className="neon-glow flex-1"
-                asChild
-              >
+              <Button variant="default" size="sm" className="neon-glow flex-1" asChild>
                 <a href={project.deploy_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Open App
