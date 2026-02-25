@@ -24,7 +24,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  useToast,
+  toast, // ← Sonner toast (directly exported by @cursorcode/ui)
 } from "@cursorcode/ui";
 
 const formSchema = z.object({
@@ -46,7 +46,6 @@ type FormData = z.infer<typeof formSchema>;
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,18 +83,20 @@ export default function SignUpPage() {
       }
 
       setSuccess(true);
-      toast({
-        title: "Account Created",
+
+      toast.success("Account Created", {
         description: "Please check your email to verify your account.",
+        duration: 6000,
       });
 
       setTimeout(() => router.push("/auth/signin"), 5000);
     } catch (err: any) {
-      setError(err.message);
-      toast({
-        variant: "destructive",
-        title: "Signup Failed",
-        description: err.message || "Something went wrong. Please try again.",
+      const message = err.message || "Something went wrong. Please try again.";
+      setError(message);
+
+      toast.error("Signup Failed", {
+        description: message,
+        duration: 5000,
       });
     } finally {
       setIsLoading(false);
