@@ -2,21 +2,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "../api/auth/[...nextauth]/route";
 
-// Extend NextAuth types (so accessToken + custom user fields are recognized everywhere)
-declare module "next-auth" {
-  interface Session {
-    accessToken?: string;
-    user: {
-      id?: string;
-      email?: string;
-      credits?: number;
-      plan?: string;
-      totp_enabled?: boolean;
-      roles?: string[];        // ← added for admin guard + future role checks
-    };
-  }
-}
-
 // Custom components (relative imports — fixes Vercel alias issues)
 import { CreditMeter } from "../../components/CreditMeter";
 import PromptForm from "../../components/PromptForm";
