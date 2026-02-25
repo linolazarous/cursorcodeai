@@ -5,6 +5,7 @@ import { SessionProvider } from "next-auth/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { useEffect } from "react";
+import { ThemeProvider } from "../components/theme-provider";
 import { reportFrontendError } from "../lib/monitoring";
 
 const queryClient = new QueryClient({
