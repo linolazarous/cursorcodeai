@@ -86,6 +86,9 @@ if (typeof window !== "undefined" && !window.__monitoringInitialized) {
       source: "unhandledrejection",
     });
 
-    if (originalOnUnhandledRejection) originalOnUnhandledRejection(event);
+    // Call original handler with correct 'this' context (fixes TS error)
+    if (originalOnUnhandledRejection) {
+      originalOnUnhandledRejection.call(window, event);
+    }
   };
 }
