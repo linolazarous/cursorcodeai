@@ -69,6 +69,8 @@ const recentUsers = [
   { id: 4, email: "dev@startup.dev", plan: "ultra", joined: "1 week ago", status: "active" },
 ];
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboard() {
   const session = await auth();
 
