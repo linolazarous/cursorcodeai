@@ -6,9 +6,9 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import * as z from "zod";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 
 // All UI components from the shared @cursorcode/ui package
 import {
@@ -24,7 +24,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  toast, // ← Sonner toast (directly exported by @cursorcode/ui)
+  toast,
 } from "@cursorcode/ui";
 
 const formSchema = z.object({
@@ -50,6 +50,8 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -62,6 +64,32 @@ export default function SignUpPage() {
   });
 
   const { register, handleSubmit, formState: { errors }, watch } = form;
+  const passwordValue = useWatch({ control: form.control, name: "password" }) || "";
+
+  // Password strength calculation
+  const getPasswordStrength = (password: string) => {
+    if (!password) return { score: 0, label: "", color: "bg-gray-700" };
+
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (password.length >= 12) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[a-z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+
+    const strengthMap = [
+      { label: "Very Weak", color: "bg-red-500", bars: 1 },
+      { label: "Weak", color: "bg-orange-500", bars: 2 },
+      { label: "Medium", color: "bg-yellow-500", bars: 3 },
+      { label: "Strong", color: "bg-emerald-500", bars: 4 },
+      { label: "Very Strong", color: "bg-green-500", bars: 5 },
+    ];
+
+    return strengthMap[Math.min(score - 1, 4)];
+  };
+
+  const strength = getPasswordStrength(passwordValue);
 
   async function onSubmit(data: FormData) {
     setIsLoading(true);
@@ -227,29 +255,78 @@ export default function SignUpPage() {
                 {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
               </div>
 
+              {/* Password Field + Strength */}
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••••••"
-                  {...register("password")}
-                  disabled={isLoading}
-                  className="neon-glow"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••••••"
+                    {...register("password")}
+                    disabled={isLoading}
+                    className="neon-glow pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+
+                {/* Strength Meter */}
+                {passwordValue && (
+                  <div className="space-y-1 pt-1">
+                    <div className="flex gap-1">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className={`h-1.5 flex-1 rounded-full transition-all ${
+                            i < strength.bars ? strength.color : "bg-gray-800"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span>Password strength:</span>
+                      <span className={`font-medium ${strength.color.replace("bg-", "text-")}`}>
+                        {strength.label}
+                      </span>
+                    </p>
+                  </div>
+                )}
+
                 {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
               </div>
 
+              {/* Confirm Password Field */}
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder="••••••••••••"
-                  {...register("confirmPassword")}
-                  disabled={isLoading}
-                  className="neon-glow"
-                />
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="••••••••••••"
+                    {...register("confirmPassword")}
+                    disabled={isLoading}
+                    className="neon-glow pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    disabled={isLoading}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
                 {errors.confirmPassword && (
                   <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
                 )}
