@@ -6,6 +6,7 @@
  */
 
 import NextAuth from "next-auth";
+import type { NextAuthConfig } from "next-auth";   // ← THIS FIXES THE ERROR
 
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
@@ -15,9 +16,9 @@ import type { JWT } from "next-auth/jwt";
 import type { Session, User } from "next-auth";
 
 /**
- * AUTH OPTIONS
+ * AUTH OPTIONS - properly typed for Auth.js v5
  */
-export const authOptions = {
+export const authOptions: NextAuthConfig = {
   providers: [
     /**
      * EMAIL / PASSWORD
@@ -57,7 +58,7 @@ export const authOptions = {
             org_id: user.org_id ?? "",
             plan: user.plan ?? "starter",
             credits: user.credits ?? 0,
-            totp_enabled: user.totp_enabled ?? false,
+            totp_enabled: !!user.totp_enabled,
           };
         } catch (error) {
           console.error("Auth error:", error);
@@ -94,9 +95,6 @@ export const authOptions = {
    * CALLBACKS
    */
   callbacks: {
-    /**
-     * JWT
-     */
     async jwt({ token, user }: { token: JWT; user?: User }) {
       if (user) {
         token.id = user.id ?? "";
@@ -105,14 +103,11 @@ export const authOptions = {
         token.org_id = user.org_id ?? "";
         token.plan = user.plan ?? "starter";
         token.credits = user.credits ?? 0;
-        token.totp_enabled = user.totp_enabled ?? false;
+        token.totp_enabled = !!user.totp_enabled;
       }
       return token;
     },
 
-    /**
-     * SESSION
-     */
     async session({ session, token }: { session: Session; token: JWT }) {
       if (session.user) {
         session.user.id = token.id ?? "";
@@ -167,7 +162,7 @@ export const authOptions = {
 };
 
 /**
- * EXPORT HANDLERS
+ * EXPORT HANDLERS (Auth.js v5 App Router)
  */
 const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
 
