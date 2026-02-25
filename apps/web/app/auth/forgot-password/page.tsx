@@ -8,7 +8,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Loader2, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 
-// All UI components from the shared package
+// All UI components from the shared @cursorcode/ui package
 import {
   Button,
   Input,
@@ -22,7 +22,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  toast, // ← Sonner toast (directly exported by @cursorcode/ui)
+  toast,
 } from "@cursorcode/ui";
 
 const formSchema = z.object({
@@ -88,7 +88,7 @@ export default function ForgotPasswordPage() {
         <Card className="w-full max-w-md cyber-card neon-glow">
           <CardHeader className="text-center">
             <CheckCircle2 className="mx-auto h-16 w-16 text-green-400" />
-            <CardTitle className="text-display text-4xl mt-6">Reset Link Sent</CardTitle>
+            <CardTitle className="text-display text-4xl mt-4">Reset Link Sent</CardTitle>
           </CardHeader>
           <CardContent className="text-center space-y-6">
             <p className="text-muted-foreground text-lg">
