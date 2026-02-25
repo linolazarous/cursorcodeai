@@ -1,15 +1,13 @@
 // packages/ui/components/use-toast.tsx
 "use client";
 
-import { toast } from "sonner";
+import { toast, Toaster } from "sonner";
 
-// Re-export toast from Sonner with shadcn-style API
-export const useToast = () => {
-  return {
-    toast,
-  };
-};
-
-// For backward compatibility with code that uses toast() directly
+// Re-export the main toast function (used everywhere in the app)
 export { toast };
-export type { Toast, ExternalToast } from "sonner";
+
+// Re-export Toaster component (used in root layout)
+export { Toaster };
+
+// Export only the types that actually exist in Sonner 1.7.4
+export type { ExternalToast } from "sonner";
