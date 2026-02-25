@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "../api/auth/[...nextauth]/route";
 
-// Extend NextAuth types (so accessToken + custom user fields are recognized)
+// Extend NextAuth types (so accessToken + custom user fields are recognized everywhere)
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
@@ -12,6 +12,7 @@ declare module "next-auth" {
       credits?: number;
       plan?: string;
       totp_enabled?: boolean;
+      roles?: string[];        // ← added for admin guard + future role checks
     };
   }
 }
