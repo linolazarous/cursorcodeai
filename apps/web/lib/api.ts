@@ -4,13 +4,22 @@ import { signOut } from "next-auth/react";
 
 /**
  * Centralized Axios instance for CursorCode AI Frontend
- * 
+ *
  * Features:
  * - Automatically includes credentials (httpOnly cookies)
  * - Global 401 handling → auto sign out + redirect
  * - Request/response interceptors with logging
  * - Timeout protection
  */
+
+// ────────────────────────────────────────────────
+// Extend Axios types for our custom retry flag
+// ────────────────────────────────────────────────
+declare module "axios" {
+  export interface InternalAxiosRequestConfig {
+    _retry?: boolean;
+  }
+}
 
 const api: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
