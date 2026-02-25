@@ -1,8 +1,14 @@
 // apps/web/lib/monitoring.ts
 /**
  * Frontend Error Monitoring for CursorCode AI
- * Sends client-side errors to backend for logging in Supabase.
- * No third-party services (no Sentry).
+ *
+ * Sends client-side errors to the backend (/api/monitoring/frontend-error)
+ * for logging in Supabase. No third-party services (no Sentry).
+ *
+ * Features:
+ * - Captures window.onerror and unhandled promise rejections
+ * - Includes rich context (URL, user agent, stack trace)
+ * - Fail-safe (never throws in production)
  */
 
 export async function reportFrontendError(
@@ -28,7 +34,7 @@ export async function reportFrontendError(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
-      credentials: "include", // Important: allows backend to associate with logged-in user
+      credentials: "include",
     });
 
     if (!res.ok) {
@@ -47,8 +53,15 @@ export async function reportFrontendError(
 
 // ────────────────────────────────────────────────
 // Global Error Handlers (Client-Side Only)
-// Set only once to prevent duplicate listeners
 // ────────────────────────────────────────────────
+
+// Extend Window interface for our custom flag
+declare global {
+  interface Window {
+    __monitoringInitialized?: boolean;
+  }
+}
+
 if (typeof window !== "undefined" && !window.__monitoringInitialized) {
   window.__monitoringInitialized = true;
 
