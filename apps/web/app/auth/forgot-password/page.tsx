@@ -22,7 +22,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  useToast,
+  toast, // ← Sonner toast (directly exported by @cursorcode/ui)
 } from "@cursorcode/ui";
 
 const formSchema = z.object({
@@ -32,7 +32,6 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 export default function ForgotPasswordPage() {
-  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
@@ -64,16 +63,18 @@ export default function ForgotPasswordPage() {
 
       setSubmittedEmail(data.email);
       setSuccess(true);
-      toast({
-        title: "Reset Link Sent",
+
+      toast.success("Reset Link Sent", {
         description: `Check your inbox for the password reset link.`,
+        duration: 6000,
       });
     } catch (err: any) {
-      setError(err.message);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: err.message || "Something went wrong. Please try again.",
+      const message = err.message || "Something went wrong. Please try again.";
+      setError(message);
+
+      toast.error("Failed to Send Reset Link", {
+        description: message,
+        duration: 5000,
       });
     } finally {
       setIsLoading(false);
