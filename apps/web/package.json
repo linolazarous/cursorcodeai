@@ -1,6 +1,6 @@
 {
   "name": "@cursorcode/web",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": true,
 
   "engines": {
@@ -16,7 +16,7 @@
   },
 
   "dependencies": {
-    "next": "15.2.6",
+    "next": "15.5.12",
 
     "react": "18.3.1",
     "react-dom": "18.3.1",
@@ -48,9 +48,9 @@
 
     "@tanstack/react-query": "5.66.0",
 
-    "@cursorcode/ui": "1.0.0",
-    "@cursorcode/db": "1.0.0",
-    "@cursorcode/types": "1.0.0",
+    "@cursorcode/ui": "workspace:*",
+    "@cursorcode/db": "workspace:*",
+    "@cursorcode/types": "workspace:*",
 
     "@simplewebauthn/browser": "^13.1.0",
 
