@@ -66,9 +66,15 @@ export default function SignUpPage() {
   const { register, handleSubmit, formState: { errors }, watch } = form;
   const passwordValue = useWatch({ control: form.control, name: "password" }) || "";
 
-  // Password strength calculation
+  // Password strength calculation (fixed return type)
   const getPasswordStrength = (password: string) => {
-    if (!password) return { score: 0, label: "", color: "bg-gray-700" };
+    if (!password) {
+      return {
+        label: "",
+        color: "bg-gray-700",
+        bars: 0,
+      };
+    }
 
     let score = 0;
     if (password.length >= 8) score++;
