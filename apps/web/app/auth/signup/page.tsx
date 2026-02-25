@@ -50,6 +50,7 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -66,7 +67,7 @@ export default function SignUpPage() {
   const { register, handleSubmit, formState: { errors }, watch } = form;
   const passwordValue = useWatch({ control: form.control, name: "password" }) || "";
 
-  // Password strength calculation (fixed return type)
+  // Password strength calculation (always returns consistent shape)
   const getPasswordStrength = (password: string) => {
     if (!password) {
       return {
@@ -116,6 +117,7 @@ export default function SignUpPage() {
         throw new Error(errorData.detail || "Failed to create account");
       }
 
+      setSubmittedEmail(data.email);
       setSuccess(true);
 
       toast.success("Account Created", {
@@ -154,7 +156,7 @@ export default function SignUpPage() {
           <CardContent className="text-center space-y-6">
             <p className="text-muted-foreground text-lg">
               We’ve sent a verification link to{" "}
-              <strong className="text-foreground">{watch("email")}</strong>
+              <strong className="text-foreground">{submittedEmail}</strong>
             </p>
             <p className="text-sm text-muted-foreground">
               Check your inbox (and spam folder). Click the link to activate your account.
