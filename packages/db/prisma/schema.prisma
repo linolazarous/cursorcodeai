@@ -1,12 +1,12 @@
 // ====================== DATASOURCE & GENERATOR ======================
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")   // ← Required for Prisma 5+
+  url      = env("DATABASE_URL")
 }
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch"]   // Prisma 5+
+  previewFeatures = ["fullTextSearch"]
   binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
@@ -23,12 +23,12 @@ model User {
   credits      Int       @default(10)
   
   // 2FA
-  totp_enabled Boolean   @default(false)
-  totp_secret  String?
+  totpEnabled  Boolean   @default(false) @map("totp_enabled")
+  totpSecret   String?   @map("totp_secret")
 
   // Timestamps
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // Relations
   projects     Project[]
@@ -45,20 +45,20 @@ model Project {
   prompt        String    @db.Text
   status        String    @default("queued")
   progress      Int       @default(0)
-  current_agent String?
+  currentAgent  String?   @map("current_agent")
   logs          String[]  @default([])
 
-  deploy_url    String?
-  preview_url   String?
-  code_repo_url String?
-  error_message String?   @db.Text
+  deployUrl     String?   @map("deploy_url")
+  previewUrl    String?   @map("preview_url")
+  codeRepoUrl   String?   @map("code_repo_url")
+  errorMessage  String?   @db.Text @map("error_message")
 
   // Relations
-  userId        String
+  userId        String    @map("user_id")
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([status])
@@ -68,17 +68,17 @@ model Project {
 // ====================== NEXTAUTH MODELS ======================
 model Account {
   id                String  @id @default(uuid())
-  userId            String
+  userId            String  @map("user_id")
   type              String
   provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
+  providerAccountId String  @map("provider_account_id")
+  refreshToken      String? @db.Text @map("refresh_token")
+  accessToken       String? @db.Text @map("access_token")
+  expiresAt         Int?    @map("expires_at")
+  tokenType         String? @map("token_type")
   scope             String?
-  id_token          String? @db.Text
-  session_state     String?
+  idToken           String? @db.Text @map("id_token")
+  sessionState      String? @map("session_state")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -88,8 +88,8 @@ model Account {
 
 model Session {
   id           String   @id @default(uuid())
-  sessionToken String   @unique
-  userId       String
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
