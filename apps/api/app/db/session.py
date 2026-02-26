@@ -6,6 +6,7 @@ FINAL Production Fix:
 • Fix CERTIFICATE_VERIFY_FAILED
 • Render compatible
 • asyncpg correct SSL handling
+• Disable prepared statements for PgBouncer/Supabase pooler
 """
 
 import logging
@@ -40,7 +41,7 @@ ssl_context.verify_mode = ssl.CERT_NONE
 
 
 # ────────────────────────────────────────────────
-# Engine
+# Engine - WITH PREPARED STATEMENTS DISABLED
 # ────────────────────────────────────────────────
 
 DATABASE_URL = str(settings.DATABASE_URL)
@@ -63,6 +64,12 @@ engine: AsyncEngine = create_async_engine(
         "server_settings": {
             "application_name": "cursorcode-api"
         },
+        # CRITICAL: Disable prepared statements for Supabase pooler
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "max_cached_statement_lifetime": 0,
+        "command_timeout": 60,
+        "timeout": 60,
     },
 )
 
