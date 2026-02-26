@@ -1,4 +1,4 @@
-// packages/db/prisma/schema.prisma
+// ====================== DATASOURCE & GENERATOR ======================
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")   // ← Required for Prisma 5+
@@ -6,61 +6,59 @@ datasource db {
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch"]   // ← Correct name for Prisma 5
+  previewFeatures = ["fullTextSearch"]   // Prisma 5+
   binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 // ====================== USER ======================
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  name          String?
-  image         String?
-  roles         String[]  @default(["user"])
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String?
+  image        String?
+  roles        String[]  @default(["user"])
   
   // Plan & Credits
-  plan          String    @default("starter")
-  credits       Int       @default(10)
+  plan         String    @default("starter")
+  credits      Int       @default(10)
   
   // 2FA
-  totp_enabled  Boolean   @default(false)
-  totp_secret   String?
+  totp_enabled Boolean   @default(false)
+  totp_secret  String?
 
   // Timestamps
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Relations
-  projects      Project[]
-  accounts      Account[]
-  sessions      Session[]
+  projects     Project[]
+  accounts     Account[]
+  sessions     Session[]
 
   @@map("users")
 }
 
 // ====================== PROJECT ======================
 model Project {
-  id              String    @id @default(uuid())
-  title           String
-  prompt          String    @db.Text
-  status          String    @default("queued")
+  id            String    @id @default(uuid())
+  title         String
+  prompt        String    @db.Text
+  status        String    @default("queued")
+  progress      Int       @default(0)
+  current_agent String?
+  logs          String[]  @default([])
 
-  progress        Int       @default(0)
-  current_agent   String?
-  logs            String[]  @default([])
-
-  deploy_url      String?
-  preview_url     String?
-  code_repo_url   String?
-
-  error_message   String?   @db.Text
+  deploy_url    String?
+  preview_url   String?
+  code_repo_url String?
+  error_message String?   @db.Text
 
   // Relations
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([userId])
   @@index([status])
@@ -69,18 +67,18 @@ model Project {
 
 // ====================== NEXTAUTH MODELS ======================
 model Account {
-  id                 String  @id @default(uuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String? @db.Text
-  access_token       String? @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String? @db.Text
-  session_state      String?
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -93,7 +91,8 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }
