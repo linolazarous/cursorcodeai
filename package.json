@@ -1,5 +1,5 @@
 {
-  "name": "@cursorcode-ai/web",
+  "name": "@cursorcode/web",
   "version": "1.0.0",
   "private": true,
   "packageManager": "yarn@1.22.19",
