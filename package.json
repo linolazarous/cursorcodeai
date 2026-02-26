@@ -1,57 +1,40 @@
 {
-"name": "cursorcode-ai",
-"version": "1.0.0",
-"private": true,
-"packageManager": "yarn@1.22.19",
-
-
-"workspaces": [
-"apps/",
-"packages/"
-],
-
-
-"prisma": {
-"schema": "packages/db/prisma/schema.prisma"
-},
-
-
-"scripts": {
-"dev": "turbo run dev --parallel",
-"build": "turbo run build",
-"start": "turbo run start",
-"lint": "turbo run lint",
-"typecheck": "turbo run typecheck",
-"test": "turbo run test",
-
-
-"db:generate": "prisma generate",
-"db:migrate": "prisma migrate dev",
-
-"postinstall": "yarn db:generate",
-
-"clean": "turbo run clean && rm -rf node_modules .turbo"
-
-
-
-},
-
-
-"resolutions": {
-"react": "^19.0.0",
-"react-dom": "^19.0.0"
-},
-
-
-"devDependencies": {
-"turbo": "^2.0.0",
-"prisma": "^5.22.0",
-"typescript": "^5.7.3",
-"@types/node": "^22.13.5",
-"@types/react": "^19.0.8",
-"@types/react-dom": "^19.0.3",
-"react": "^19.0.0",
-"react-dom": "^19.0.0"
+  "name": "cursorcode-ai",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@1.22.19",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "prisma": {
+    "schema": "packages/db/prisma/schema.prisma"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "postinstall": "prisma generate",
+    "clean": "turbo run clean && rm -rf node_modules .turbo"
+  },
+  "resolutions": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "prisma": "^5.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "turbo": "^2.0.0",
+    "typescript": "^5.7.3"
+  }
 }
-}
-
