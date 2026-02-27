@@ -2,15 +2,15 @@
 /**
  * Frontend Error Monitoring for CursorCode AI
  *
- * Sends client-side errors to the backend (/api/monitoring/frontend-error)
- * for logging in Supabase. No third-party services (no Sentry).
- *
- * Features:
- * - Captures window.onerror and unhandled promise rejections
- * - Includes rich context (URL, user agent, stack trace)
- * - Fail-safe (never throws in production)
+ * Sends client-side errors to /api/monitoring/frontend-error for logging.
+ * Uses the centralized api.ts for consistency with auth & all other calls.
  */
 
+import api from "./api";
+
+/**
+ * Report a frontend error to the backend
+ */
 export async function reportFrontendError(
   error: Error | string,
   extra: Record<string, any> = {}
@@ -28,19 +28,9 @@ export async function reportFrontendError(
       ...extra,
     };
 
-    const res = await fetch("/api/monitoring/frontend-error", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-      credentials: "include",
-    });
+    await api.post("/api/monitoring/frontend-error", payload);
 
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "Unknown error");
-      console.warn("[Monitoring] Failed to report to backend:", errorText);
-    } else if (process.env.NODE_ENV === "development") {
+    if (process.env.NODE_ENV === "development") {
       console.log("[Monitoring] Error reported successfully:", message);
     }
   } catch (reportErr) {
@@ -54,8 +44,6 @@ export async function reportFrontendError(
 // ────────────────────────────────────────────────
 // Global Error Handlers (Client-Side Only)
 // ────────────────────────────────────────────────
-
-// Extend Window interface for our custom flag
 declare global {
   interface Window {
     __monitoringInitialized?: boolean;
@@ -76,7 +64,7 @@ if (typeof window !== "undefined" && !window.__monitoringInitialized) {
     });
 
     if (originalOnError) originalOnError(msg, url, line, col, error);
-    return false; // Let default browser handler also run
+    return false;
   };
 
   // Catch unhandled promise rejections
@@ -86,7 +74,6 @@ if (typeof window !== "undefined" && !window.__monitoringInitialized) {
       source: "unhandledrejection",
     });
 
-    // Call original handler with correct 'this' context (fixes TS error)
     if (originalOnUnhandledRejection) {
       originalOnUnhandledRejection.call(window, event);
     }
