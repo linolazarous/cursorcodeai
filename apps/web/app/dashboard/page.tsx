@@ -1,6 +1,6 @@
 // apps/web/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";  // Fixed import - using alias
+import { auth } from "../../auth";  // Fixed import - using alias
 
 // Custom components (relative imports — fixes Vercel alias issues)
 import { CreditMeter } from "../../components/CreditMeter";
@@ -172,3 +172,4 @@ export default async function DashboardPage() {
     </div>
   );
 }
+
