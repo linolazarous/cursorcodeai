@@ -16,12 +16,12 @@ model User {
   email        String    @unique
   name         String?
   image        String?
-  roles        String[]  @default(["user"])
-  
+  roles        String[]  @default(["user"]) // can include "super_admin" for first user
+
   // Plan & Credits
   plan         String    @default("starter")
   credits      Int       @default(10)
-  
+
   // 2FA
   totpEnabled  Boolean   @default(false) @map("totp_enabled")
   totpSecret   String?   @map("totp_secret")
