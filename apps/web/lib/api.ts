@@ -1,6 +1,6 @@
 // apps/web/lib/api.ts
 import axios, { AxiosInstance, AxiosError } from "axios";
-import { signOut } from "@/lib/auth";   // ← Updated for our centralized NextAuth v5 config
+import { signOut } from "./auth";   // ← Relative import (same folder) — fixes build immediately
 
 /**
  * Centralized Axios instance for CursorCode AI Frontend
@@ -53,7 +53,7 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config;
 
-    // Handle 401 Unauthorized → Auto sign out using our centralized auth
+    // Handle 401 Unauthorized → Auto sign out
     if (error.response?.status === 401) {
       console.warn("🔑 Session expired or invalid. Signing out...");
 
