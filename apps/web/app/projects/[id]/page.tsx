@@ -1,6 +1,6 @@
 // apps/web/app/projects/[id]/page.tsx
 import { notFound, redirect } from "next/navigation";
-import { auth } from "../../api/auth/[...nextauth]/route";
+import { auth } from "@/auth";  // Fixed import - using alias
 
 // All UI components from the shared @cursorcode/ui package
 import {
@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-  toast,          // ← direct import (Sonner)
+  toast,
 } from "@cursorcode/ui";
 
 import { Copy, ExternalLink, Eye, Trash2, AlertCircle } from "lucide-react";
@@ -77,7 +77,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
   const projectId = params.id;
 
-  const res = await fetch(`\( {process.env.NEXT_PUBLIC_API_URL}/projects/ \){projectId}`, {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}`, {
     headers: {
       Cookie: `access_token=${session.accessToken || ""}`,
     },
