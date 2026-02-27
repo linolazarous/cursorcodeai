@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://cursorcode.ai">🌐 Live Demo</a> ·
+  <a href="https://cursorcode-ai.vercel.app">🌐 Live Demo</a> ·
   <a href="https://github.com/linolazarous/cursorcode-ai/issues/new">🐛 Report Bug</a> ·
   <a href="mailto:info@cursorcode.ai">📧 Contact</a>
 </p>
@@ -99,21 +99,3 @@ CursorCode AI behaves like a **self-directed AI engineering team** capable of de
 - xAI Grok family with intelligent routing
 
 ---
-
-## Quick Start – Local Development
-
-### Prerequisites
-- Node.js 20+ & pnpm 9+
-- Python 3.12+
-- Docker (recommended)
-- Supabase account (free tier works)
-- Upstash Redis account (free tier works)
-
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/linolazarous/cursorcode-ai.git
-cd cursorcode-ai
-pnpm install
-
-
