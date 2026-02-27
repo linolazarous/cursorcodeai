@@ -1,21 +1,19 @@
-// packages/db/seed.ts
 import { prisma } from './lib/prisma';
-import { hashPassword } from './utils';
 
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // Admin User
+  // Admin User (first user becomes super_admin)
   const admin = await prisma.user.upsert({
     where: { email: 'admin@cursorcode.ai' },
     update: {},
     create: {
       email: 'admin@cursorcode.ai',
       name: 'CursorCode Admin',
-      roles: ['admin'],
+      roles: ['super_admin'], // OAuth-first user becomes super_admin
       plan: 'ultra',
       credits: 5000,
-      totp_enabled: true,
+      totp_enabled: false, // optional, can enable later if using 2FA
     },
   });
 
@@ -29,10 +27,11 @@ async function main() {
       roles: ['user'],
       plan: 'pro',
       credits: 150,
+      totp_enabled: false,
     },
   });
 
-  // Example Projects
+  // Example Project
   await prisma.project.upsert({
     where: { id: 'proj_demo_1' },
     update: {},
