@@ -3,13 +3,15 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 // All UI components from the shared @cursorcode/ui package
-import { Button, Card, CardContent } from "@cursorcode/ui";
+import { Button, Card } from "@cursorcode/ui";
 
-import { ArrowRight, Sparkles, Zap, Rocket, Play, Pause } from "lucide-react";
+import { Sparkles, Play, X, Menu } from "lucide-react";
 
 export default function LandingPage() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [demoPrompt, setDemoPrompt] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
@@ -34,9 +36,7 @@ export default function LandingPage() {
     }
   }, [isTyping]);
 
-  const playDemo = () => {
-    setIsTyping(true);
-  };
+  const playDemo = () => setIsTyping(true);
 
   const toggleVideo = () => {
     if (videoRef.current) {
@@ -49,22 +49,40 @@ export default function LandingPage() {
     }
   };
 
-  // Get current year for footer
   const currentYear = new Date().getFullYear();
 
   return (
-    <div className="min-h-screen storyboard-grid bg-background text-foreground overflow-hidden">
+    <div className="min-h-screen bg-background text-foreground overflow-hidden">
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl">
         <div className="container mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="logo-cursor">
-              <span className="text-3xl font-black tracking-tighter text-brand-blue">CC</span>
+          {/* Logo - Image with fallback to glowing CC */}
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="relative">
+              <Image
+                src="/logo.svg"
+                alt="CursorCode AI"
+                width={36}
+                height={36}
+                className="h-9 w-auto transition-transform group-hover:scale-110"
+                onError={(e) => {
+                  // Fallback to glowing CC text if logo.svg is missing
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    e.currentTarget.style.display = "none";
+                    const fallback = document.createElement("span");
+                    fallback.className = "text-3xl font-black tracking-tighter text-brand-blue drop-shadow-[0_0_12px_#3b82f6]";
+                    fallback.textContent = "CC";
+                    parent.appendChild(fallback);
+                  }
+                }}
+              />
             </div>
             <span className="text-display text-2xl font-bold tracking-tighter">CursorCode AI</span>
-          </div>
+          </Link>
 
-          <div className="flex items-center gap-8">
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center gap-8">
             <Link href="#demo" className="text-sm hover:text-brand-blue transition-colors">Live Demo</Link>
             <Link href="#how" className="text-sm hover:text-brand-blue transition-colors">How it works</Link>
             <Link href="/auth/signin" className="text-sm hover:text-brand-blue transition-colors">Sign in</Link>
@@ -72,7 +90,29 @@ export default function LandingPage() {
               <Link href="/auth/signup">Start Building Free</Link>
             </Button>
           </div>
+
+          {/* Mobile Menu Button (this was missing!) */}
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="md:hidden p-2 text-foreground hover:text-brand-blue transition-colors"
+          >
+            {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
+          </button>
         </div>
+
+        {/* Mobile Menu */}
+        {isMenuOpen && (
+          <div className="md:hidden border-t border-border bg-background/95 backdrop-blur-xl">
+            <div className="flex flex-col px-6 py-8 space-y-6 text-lg">
+              <Link href="#demo" onClick={() => setIsMenuOpen(false)} className="hover:text-brand-blue">Live Demo</Link>
+              <Link href="#how" onClick={() => setIsMenuOpen(false)} className="hover:text-brand-blue">How it works</Link>
+              <Link href="/auth/signin" onClick={() => setIsMenuOpen(false)} className="hover:text-brand-blue">Sign in</Link>
+              <Button asChild className="w-full neon-glow" onClick={() => setIsMenuOpen(false)}>
+                <Link href="/auth/signup">Start Building Free</Link>
+              </Button>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* HERO */}
@@ -100,14 +140,19 @@ export default function LandingPage() {
             <Button size="lg" className="neon-glow text-xl h-14 px-10" asChild>
               <Link href="/auth/signup">Start Building Free →</Link>
             </Button>
-            <Button size="lg" variant="outline" className="neon-glow text-xl h-14 px-10" onClick={() => document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" })}>
+            <Button 
+              size="lg" 
+              variant="outline" 
+              className="neon-glow text-xl h-14 px-10" 
+              onClick={() => document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" })}
+            >
               Watch Live Demo
             </Button>
           </div>
         </div>
       </section>
 
-      {/* LIVE PROMPT DEMO */}
+      {/* LIVE DEMO SECTION (unchanged except cleaner video) */}
       <section id="demo" className="py-24 border-t border-border bg-black/40">
         <div className="container mx-auto px-6">
           <div className="max-w-4xl mx-auto text-center mb-12">
@@ -128,7 +173,6 @@ export default function LandingPage() {
                 onPause={() => setVideoPlaying(false)}
               />
 
-              {/* Overlay Play Button */}
               {!videoPlaying && (
                 <button
                   onClick={toggleVideo}
@@ -140,7 +184,6 @@ export default function LandingPage() {
                 </button>
               )}
 
-              {/* Live Prompt Overlay */}
               <div className="absolute bottom-6 left-6 right-6 bg-black/80 border border-brand-blue/50 rounded-2xl p-6 backdrop-blur">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="text-brand-glow text-xs tracking-widest">LIVE DEMO</div>
