@@ -2,7 +2,7 @@
 /**
  * Frontend Error Monitoring for CursorCode AI
  *
- * Sends client-side errors to /api/monitoring/frontend-error for logging.
+ * Sends client-side errors to /api/monitoring/error for logging.
  * Uses the centralized api.ts for consistency with auth & all other calls.
  */
 
@@ -28,7 +28,8 @@ export async function reportFrontendError(
       ...extra,
     };
 
-    await api.post("/api/monitoring/frontend-error", payload);
+    // ✅ Updated to match the actual route we created
+    await api.post("/api/monitoring/error", payload);
 
     if (process.env.NODE_ENV === "development") {
       console.log("[Monitoring] Error reported successfully:", message);
