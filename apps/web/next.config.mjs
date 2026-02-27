@@ -1,5 +1,12 @@
 // apps/web/next.config.mjs
 import path from "path";
+import { fileURLToPath } from "url";
+
+/**
+ * Fix for __dirname in ES Modules (Next.js 15 uses ESM)
+ */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -17,7 +24,7 @@ const nextConfig = {
     "@cursorcode/db",
   ],
 
-  // ✅ Fixes missing logo + local images on Vercel
+  // Fixes missing logo + local images on Vercel
   images: {
     unoptimized: true,
     remotePatterns: [
@@ -28,16 +35,16 @@ const nextConfig = {
     ],
   },
 
-  // ✅ Explicit webpack alias for @/ (required in Turborepo/Next.js 15)
+  // Explicit webpack alias for @/ (required in Turborepo/Next.js 15)
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      "@": path.resolve(__dirname, "./"),
+      "@": path.resolve(__dirname),
     };
     return config;
   },
 
-  // Keep your existing monorepo settings
+  // Monorepo settings
   typescript: {
     ignoreBuildErrors: true,
   },
