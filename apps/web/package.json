@@ -6,8 +6,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "yarn workspace db generate && next dev",
-    "build": "yarn workspace db generate && next build",
+    "dev": "yarn workspace @cursorcode/db prisma:generate && next dev",
+    "build": "yarn workspace @cursorcode/db prisma:generate && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
