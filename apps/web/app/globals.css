@@ -41,6 +41,67 @@
   }
 }
 
+/* Add to @layer base for better typography */
+@layer base {
+  /* Smooth scrolling only when not reduced motion */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  /* Better default focus styles */
+  :focus-visible {
+    outline: 2px solid hsl(var(--accent));
+    outline-offset: 2px;
+  }
+}
+
+/* Add to @layer components for loading states */
+@layer components {
+  /* Skeleton loading animation */
+  .skeleton-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Glitch effect for special elements */
+  .glitch-text {
+    position: relative;
+    animation: glitch 3s infinite;
+  }
+
+  @keyframes glitch {
+    0%, 100% { transform: none; opacity: 1; }
+    7% { transform: skew(-0.5deg, -0.9deg); opacity: 0.75; }
+    10% { transform: none; opacity: 1; }
+    27% { transform: skew(0.8deg, -0.1deg); opacity: 0.75; }
+    30% { transform: none; opacity: 1; }
+    52% { transform: skew(0.4deg, 1deg); opacity: 0.9; }
+    55% { transform: none; opacity: 1; }
+  }
+}
+
+/* Add to @layer utilities for animations */
+@layer utilities {
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  
+  .animation-delay-500 {
+    animation-delay: 500ms;
+  }
+
+  /* Gradient text with brand colors */
+  .text-gradient-brand {
+    @apply bg-gradient-to-r from-brand-blue via-accent to-brand-blue bg-clip-text text-transparent;
+  }
+}
+
 /* ============================================= */
 /* 2. Component Layer – Video/Logo Inspired Styles */
 /* ============================================= */
