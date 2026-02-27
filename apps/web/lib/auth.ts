@@ -1,3 +1,8 @@
+/**
+ * NextAuth v5 (Auth.js) Configuration for CursorCode AI
+ * OAuth Only: Google & GitHub
+ */
+
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 
@@ -9,6 +14,9 @@ import type { Session, User } from "next-auth";
 
 export const authOptions: NextAuthConfig = {
   providers: [
+    /**
+     * GOOGLE OAUTH
+     */
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
@@ -20,6 +28,10 @@ export const authOptions: NextAuthConfig = {
         },
       },
     }),
+
+    /**
+     * GITHUB OAUTH
+     */
     GitHubProvider({
       clientId: process.env.GITHUB_ID ?? "",
       clientSecret: process.env.GITHUB_SECRET ?? "",
@@ -55,7 +67,7 @@ export const authOptions: NextAuthConfig = {
   },
 
   pages: {
-    signIn: "/auth/signin",
+    signIn: "/auth/signin", // optional custom page
     error: "/auth/error",
   },
 
