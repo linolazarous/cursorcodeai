@@ -1,3 +1,6 @@
+// apps/web/next.config.mjs
+import path from "path";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -14,9 +17,9 @@ const nextConfig = {
     "@cursorcode/db",
   ],
 
-  // ✅ Fixes missing logo + any local images on Vercel
+  // ✅ Fixes missing logo + local images on Vercel
   images: {
-    unoptimized: true,           // Required for local /public images in many Vercel + Turborepo setups
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
@@ -25,7 +28,16 @@ const nextConfig = {
     ],
   },
 
-  // Required for Vercel + Turborepo monorepos (keeps your current settings)
+  // ✅ Explicit webpack alias for @/ (required in Turborepo/Next.js 15)
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@": path.resolve(__dirname, "./"),
+    };
+    return config;
+  },
+
+  // Keep your existing monorepo settings
   typescript: {
     ignoreBuildErrors: true,
   },
