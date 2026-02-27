@@ -1,6 +1,6 @@
 // apps/web/app/projects/[id]/page.tsx
 import { notFound, redirect } from "next/navigation";
-import { auth } from "../../auth";  // Fixed import - using alias
+import { auth } from "../../../auth";  // Fixed import - using alias
 
 // All UI components from the shared @cursorcode/ui package
 import {
@@ -291,4 +291,5 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     </div>
   );
 }
+
 
