@@ -1,4 +1,3 @@
-// apps/web/app/auth/forgot-password/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -8,7 +7,6 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Loader2, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 
-// All UI components from the shared @cursorcode/ui package
 import {
   Button,
   Input,
