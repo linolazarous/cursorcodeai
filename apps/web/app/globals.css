@@ -25,7 +25,6 @@
     --input: 30 41 55;
     --ring: 30 136 229;
 
-    /* Brand-specific vars for easy reuse */
     --brand-blue: 30 136 229;
     --brand-glow: 103 232 249;
   }
@@ -49,24 +48,24 @@
 /* 2. Component Layer – Neon / Cyber Styles     */
 /* ============================================= */
 @layer components {
-  /* Neon glow used on buttons, cards, logo */
+  /* Neon glow toned down for better readability */
   .neon-glow {
     box-shadow: 
-      0 0 15px hsl(var(--accent) / 0.6),
-      0 0 30px hsl(var(--brand-blue) / 0.4);
-    transition: box-shadow 0.3s ease, transform 0.2s ease;
+      0 0 8px hsl(var(--accent) / 0.5),
+      0 0 20px hsl(var(--brand-blue) / 0.3);
+    transition: all 0.3s ease;
   }
 
   .neon-glow:hover {
     box-shadow: 
-      0 0 25px hsl(var(--accent)),
-      0 0 60px hsl(var(--brand-blue));
+      0 0 15px hsl(var(--accent)),
+      0 0 30px hsl(var(--brand-blue));
     transform: translateY(-2px);
   }
 
   /* Logo cursor effect */
   .logo-cursor {
-    filter: drop-shadow(0 0 25px hsl(var(--brand-blue)));
+    filter: drop-shadow(0 0 15px hsl(var(--brand-blue)));
   }
 
   /* Futuristic card for demo video */
@@ -83,22 +82,22 @@
 
   /* Mobile menu slide-in */
   .mobile-menu {
-    animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: slideDown 0.3s ease-out forwards;
   }
 
   @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-10px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
-  /* Video play button enhancement (matches screenshot glow) */
+  /* Video play button (less aggressive glow) */
   .video-play-btn {
-    box-shadow: 0 0 40px hsl(var(--accent) / 0.8);
+    box-shadow: 0 0 20px hsl(var(--accent) / 0.6);
     transition: all 0.2s ease;
   }
   .video-play-btn:hover {
-    box-shadow: 0 0 60px hsl(var(--accent));
-    transform: scale(1.1);
+    box-shadow: 0 0 40px hsl(var(--accent));
+    transform: scale(1.05);
   }
 }
 
@@ -111,7 +110,7 @@
   }
 
   .text-glow {
-    text-shadow: 0 0 20px hsl(var(--accent));
+    text-shadow: 0 0 12px hsl(var(--accent) / 0.8);
   }
 
   /* Gradient text matching the screenshot */
@@ -123,21 +122,50 @@
 }
 
 /* ============================================= */
-/* 4. Extra Fixes for Live Demo & Screenshot    */
+/* 4. Extra Fixes for Mobile Arrangement        */
 /* ============================================= */
+@media (max-width: 768px) {
+  .container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  h1 {
+    font-size: 3.5rem !important;  /* Better mobile sizing */
+  }
+
+  h2 {
+    font-size: 2.5rem !important;
+  }
+
+  p.text-2xl {
+    font-size: 1.25rem !important;
+  }
+
+  .flex-col sm:flex-row {
+    flex-direction: column !important;
+  }
+
+  .video-container {
+    border-radius: 12px;
+  }
+}
+
+/* Video container (fixes brown box alignment) */
 .video-container {
   position: relative;
   overflow: hidden;
   border-radius: 16px;
+  background-color: hsl(var(--card));  /* Dark background if video fails */
 }
 
 .video-container video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;  /* Changed to contain for better mobile fit */
 }
 
 /* Purple/blue glow border around demo box (matches screenshot) */
 .cyber-card {
-  box-shadow: 0 0 30px rgba(103, 232, 249, 0.3);
+  box-shadow: 0 0 20px rgba(103, 232, 249, 0.4);
 }
