@@ -1,8 +1,3 @@
-/**
- * NextAuth v5 (Auth.js) Configuration for CursorCode AI
- * OAuth-only with first user as super_admin
- */
-
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 
@@ -12,13 +7,8 @@ import GitHubProvider from "next-auth/providers/github";
 import type { JWT } from "next-auth/jwt";
 import type { Session, User } from "next-auth";
 
-import { prisma } from "../db/lib/prisma"; // Update path if needed
-
 export const authOptions: NextAuthConfig = {
   providers: [
-    /**
-     * GOOGLE
-     */
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
@@ -30,10 +20,6 @@ export const authOptions: NextAuthConfig = {
         },
       },
     }),
-
-    /**
-     * GITHUB
-     */
     GitHubProvider({
       clientId: process.env.GITHUB_ID ?? "",
       clientSecret: process.env.GITHUB_SECRET ?? "",
@@ -41,50 +27,15 @@ export const authOptions: NextAuthConfig = {
   ],
 
   callbacks: {
-    /**
-     * Sign-in callback: create user in DB if not exists
-     * First user becomes super_admin automatically
-     */
-    async signIn({ user }: { user: User }) {
-      if (!user.email) return false;
-
-      const existingUser = await prisma.user.findUnique({
-        where: { email: user.email },
-      });
-
-      if (!existingUser) {
-        const userCount = await prisma.user.count();
-
-        await prisma.user.create({
-          data: {
-            email: user.email,
-            name: user.name ?? "",
-            roles: userCount === 0 ? ["super_admin"] : ["user"], // First user = super_admin
-            plan: userCount === 0 ? "ultra" : "starter",
-            credits: userCount === 0 ? 5000 : 10,
-            totp_enabled: false,
-          },
-        });
-      }
-
-      return true;
-    },
-
     async jwt({ token, user }: { token: JWT; user?: User }) {
       if (user) {
-        const dbUser = await prisma.user.findUnique({
-          where: { email: user.email! },
-        });
-
-        if (dbUser) {
-          token.id = dbUser.id;
-          token.email = dbUser.email;
-          token.roles = dbUser.roles;
-          token.org_id = dbUser.org_id ?? "";
-          token.plan = dbUser.plan;
-          token.credits = dbUser.credits;
-          token.totp_enabled = dbUser.totp_enabled;
-        }
+        token.id = user.id ?? "";
+        token.email = user.email ?? "";
+        token.roles = user.roles ?? [];
+        token.org_id = user.org_id ?? "";
+        token.plan = user.plan ?? "starter";
+        token.credits = user.credits ?? 0;
+        token.totp_enabled = !!user.totp_enabled;
       }
       return token;
     },
