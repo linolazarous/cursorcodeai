@@ -1,6 +1,6 @@
 // apps/web/lib/api.ts
 import axios, { AxiosInstance, AxiosError } from "axios";
-import { signOut } from "next-auth/react";
+import { signOut } from "@/lib/auth";   // ← Updated for our centralized NextAuth v5 config
 
 /**
  * Centralized Axios instance for CursorCode AI Frontend
@@ -10,6 +10,7 @@ import { signOut } from "next-auth/react";
  * - Global 401 handling → auto sign out + redirect
  * - Request/response interceptors with logging
  * - Timeout protection
+ * - Fully compatible with NextAuth v5 (Auth.js)
  */
 
 // ────────────────────────────────────────────────
@@ -23,7 +24,7 @@ declare module "axios" {
 
 const api: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
-  withCredentials: true,           // Critical for cookie-based auth with Render backend
+  withCredentials: true,           // Critical for cookie-based auth
   timeout: 15000,                  // 15 seconds
   headers: {
     "Content-Type": "application/json",
@@ -52,7 +53,7 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config;
 
-    // Handle 401 Unauthorized → Auto sign out
+    // Handle 401 Unauthorized → Auto sign out using our centralized auth
     if (error.response?.status === 401) {
       console.warn("🔑 Session expired or invalid. Signing out...");
 
