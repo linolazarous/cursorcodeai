@@ -4,9 +4,9 @@ import { Inter, Space_Grotesk } from "next/font/google";
 
 import "./globals.css";
 
-import { ThemeProvider } from "../components/theme-provider";
-import { auth } from "./api/auth/[...nextauth]/route";
-import Providers from "./providers"; // ← new client wrapper
+import { ThemeProvider } from "@/components/theme-provider"; // ✅ consistent alias
+import { auth } from "@/lib/auth"; // ✅ FIXED: now imports from our centralized lib/auth.ts (after refactor)
+import Providers from "./providers"; // ← your client wrapper
 
 // Fonts
 const inter = Inter({
@@ -53,7 +53,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const session = await auth(); // ← now works with our v5 refactor
 
   return (
     <html
