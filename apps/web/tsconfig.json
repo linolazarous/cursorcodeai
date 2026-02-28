@@ -5,11 +5,14 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "preserve",
+
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowJs": true,
+
     "resolveJsonModule": true,
     "incremental": true,
     "noEmit": true,
@@ -22,6 +25,8 @@
       "@cursorcode/ui": ["../../packages/ui"]
     },
 
+    "types": ["node"],
+
     "plugins": [
       {
         "name": "next"
@@ -32,7 +37,7 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.d.ts",
+    ".next/types/**/*.ts",
     "../../packages/types/**/*.d.ts"
   ],
   "exclude": ["node_modules", ".next"]
