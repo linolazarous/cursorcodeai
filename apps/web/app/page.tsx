@@ -229,7 +229,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border py-12 md:py-16 bg-card">
         <div className="container mx-auto px-6 text-center text-sm text-muted-foreground">
-          © {currentYear} CursorCode AI • Built with Grok by xAI • All rights reserved
+          © {currentYear} CursorCode AI • All rights reserved
         </div>
       </footer>
     </div>
