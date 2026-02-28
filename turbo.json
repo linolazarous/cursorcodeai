@@ -15,9 +15,7 @@
         "NEXT_PUBLIC_API_URL",
         "NEXTAUTH_SECRET",
         "NEXTAUTH_URL",
-        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-        "STRIPE_SECRET_KEY",
-        "STRIPE_WEBHOOK_SECRET"
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
       ]
     },
     "dev": {
@@ -34,9 +32,7 @@
         "NEXT_PUBLIC_API_URL",
         "NEXTAUTH_SECRET",
         "NEXTAUTH_URL",
-        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-        "STRIPE_SECRET_KEY",
-        "STRIPE_WEBHOOK_SECRET"
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
       ]
     },
     "db:generate": {
