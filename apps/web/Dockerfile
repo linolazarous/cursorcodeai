@@ -1,47 +1,46 @@
-# apps/web/Dockerfile
 # =============================================
-# Production-ready Dockerfile for CursorCode AI Web (Next.js 16)
-# Multi-stage build • Small image • Security best practices
-# Uses npm to match Vercel build environment
+# Production-ready Dockerfile for CursorCode AI Web
+# Turborepo + Next.js + Prisma Compatible
 # =============================================
 
-# ==================== BUILD STAGE ====================
-FROM node:20-alpine AS builder
-
+# ==================== BASE ====================
+FROM node:20-alpine AS base
 WORKDIR /app
+RUN apk add --no-cache libc6-compat
 
-# Copy package files first (better layer caching)
-COPY package*.json ./
+# ==================== BUILDER ====================
+FROM base AS builder
 
-# Install dependencies using npm (matches Vercel)
-RUN npm ci --frozen-lockfile
+# Copy root files (monorepo aware)
+COPY ../../package.json ../../package-lock.json ./
+COPY ../../turbo.json ./
 
-# Copy source code
-COPY . .
+# Copy full monorepo
+COPY ../../ ./
 
-# Build the Next.js app (uses output: "standalone" from next.config.mjs)
-RUN npm run build
+# Install all workspace deps
+RUN npm ci
 
-# ==================== RUNTIME STAGE ====================
-FROM node:20-alpine AS runner
+# Build only web app
+RUN npx turbo run build --filter=@cursorcode/web
 
-WORKDIR /app
+# ==================== RUNNER ====================
+FROM base AS runner
 
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+ENV HOSTNAME=0.0.0.0
 
-# Copy only the necessary files from builder (standalone output)
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
-# Create non-root user for security (best practice)
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Create non-root user
+RUN addgroup -S nodejs -g 1001
+RUN adduser -S nextjs -u 1001
 USER nextjs
+
+# Copy standalone output
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./.next/static
+COPY --from=builder /app/apps/web/public ./public
 
 EXPOSE 3000
 
-# Start the standalone Next.js server
 CMD ["node", "server.js"]
