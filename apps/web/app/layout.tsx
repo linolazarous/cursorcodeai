@@ -1,12 +1,12 @@
 // apps/web/app/layout.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 
 import "./globals.css";
 
 import { ThemeProvider } from "@/components/theme-provider";
-import { auth } from "../lib/auth";   // ← Relative import (fixes build instantly)
-import Providers from "./providers"; // ← your client wrapper
+import { auth } from "../lib/auth";   // ← NextAuth server-side session (OAuth + Credentials hybrid)
+import Providers from "./providers"; // ← Your client wrapper (SessionProvider, etc.)
 
 // Fonts
 const inter = Inter({
@@ -32,9 +32,9 @@ export const metadata: Metadata = {
   keywords: [
     "AI software engineering",
     "autonomous coding",
-    "Grok xAI",
-    "CursorCode AI",
     "AI app builder",
+    "CursorCode AI",
+    "self-directing AI engineering",
   ],
   authors: [{ name: "CursorCode AI Team" }],
   icons: {
@@ -44,8 +44,22 @@ export const metadata: Metadata = {
   openGraph: {
     title: "CursorCode AI",
     description: "Build Anything. Automatically. With AI.",
-    images: [{ url: "/og-image.png" }],
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
+    siteName: "CursorCode AI",
+    url: "https://cursorcode.ai",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "CursorCode AI",
+    description: "Build Anything. Automatically. With AI.",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0a0a",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default async function RootLayout({
@@ -53,7 +67,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const session = await auth(); // ← Keeps NextAuth hybrid working (OAuth + your custom Credentials provider)
 
   return (
     <html
@@ -63,13 +77,25 @@ export default async function RootLayout({
     >
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
       </head>
 
-      <body className="font-sans antialiased bg-background text-foreground">
-        <Providers session={session}>
-          {children}
-        </Providers>
+      <body className="font-sans antialiased bg-background text-foreground min-h-screen">
+        {/* Explicit ThemeProvider + Providers wrapper (best practice) */}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          storageKey="cursorcode-theme"
+        >
+          <Providers session={session}>
+            {children}
+          </Providers>
+        </ThemeProvider>
       </body>
     </html>
   );
