@@ -48,12 +48,17 @@ export default function ForgotPasswordPage() {
     setError(null);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: data.email }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password/request`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include", // consistency with all other auth calls
+          body: JSON.stringify({ email: data.email }),
+        }
+      );
 
+      // Backend always returns 200 (even for non-existent emails) → always success
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.detail || "Failed to send reset link");
@@ -63,7 +68,7 @@ export default function ForgotPasswordPage() {
       setSuccess(true);
 
       toast.success("Reset Link Sent", {
-        description: `Check your inbox for the password reset link.`,
+        description: `Check your inbox (and spam) for the password reset link.`,
         duration: 6000,
       });
     } catch (err: any) {
