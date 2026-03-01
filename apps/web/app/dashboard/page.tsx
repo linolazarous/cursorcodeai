@@ -1,14 +1,12 @@
 // apps/web/app/dashboard/page.tsx
 import { redirect } from "next/navigation";
-import { auth } from "../../lib/auth";  // Fixed import - using alias
+import { auth } from "../../lib/auth";
 
-// Custom components (relative imports — fixes Vercel alias issues)
 import { CreditMeter } from "../../components/CreditMeter";
 import PromptForm from "../../components/PromptForm";
 import ProjectList from "../../components/ProjectList";
 import TwoFASetup from "../../components/2FASetup";
 
-// All UI components from the shared @cursorcode/ui package
 import {
   Button,
   Card,
@@ -34,7 +32,7 @@ import {
   AlertDialogTrigger,
 } from "@cursorcode/ui";
 
-import { ShieldCheck, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
@@ -51,10 +49,9 @@ export default async function DashboardPage() {
   const plan = user.plan ?? "starter";
   const totpEnabled = user.totp_enabled ?? false;
 
+  // Fetch projects using cookies (consistent with all other pages)
   const projectsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
-    headers: {
-      Cookie: `access_token=${session.accessToken || ""}`,
-    },
+    credentials: "include",   // ← This is the key change
     cache: "no-store",
   });
 
@@ -69,7 +66,9 @@ export default async function DashboardPage() {
             <h1 className="text-display text-5xl font-bold tracking-tighter text-foreground neon-glow">
               CursorCode AI
             </h1>
-            <p className="text-2xl text-muted-foreground mt-1">Build Anything. Automatically. With AI.</p>
+            <p className="text-2xl text-muted-foreground mt-1">
+              Build Anything. Automatically. With AI.
+            </p>
           </div>
 
           <div className="flex items-center gap-4 flex-wrap">
@@ -93,7 +92,9 @@ export default async function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 text-green-400">
                   <CheckCircle2 className="h-6 w-6" />
-                  <span className="text-lg font-medium">2FA is enabled — your account is protected</span>
+                  <span className="text-lg font-medium">
+                    2FA is enabled — your account is protected
+                  </span>
                 </div>
 
                 <AlertDialog>
@@ -162,7 +163,10 @@ export default async function DashboardPage() {
           {/* Projects Tab */}
           <TabsContent value="projects">
             <Suspense fallback={
-              <div className="text-center py-20 text-muted-foreground">Loading your projects...</div>
+              <div className="flex items-center justify-center py-20 text-muted-foreground">
+                <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+                Loading your projects...
+              </div>
             }>
               <ProjectList initialProjects={initialProjects} />
             </Suspense>
@@ -172,5 +176,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-
-
