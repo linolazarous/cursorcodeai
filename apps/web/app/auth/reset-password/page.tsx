@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import * as z from "zod";
@@ -24,7 +24,7 @@ import {
   toast,
 } from "@cursorcode/ui";
 
-// Zod schema for reset password form
+// Zod schema (kept exactly as you had it)
 const formSchema = z.object({
   password: z
     .string()
@@ -61,7 +61,7 @@ export default function ResetPasswordPage() {
   const { register, handleSubmit, formState: { errors }, control } = form;
   const passwordValue = useWatch({ control, name: "password" }) || "";
 
-  // Password strength helper
+  // Password strength helper (kept exactly as you had it)
   const getPasswordStrength = (password: string) => {
     if (!password) return { label: "", color: "bg-gray-700", bars: 0 };
 
@@ -86,10 +86,10 @@ export default function ResetPasswordPage() {
 
   const strength = getPasswordStrength(passwordValue);
 
-  // Submit handler
+  // Submit handler — now matches backend exactly
   async function onSubmit(data: FormData) {
     if (!token) {
-      setError("Invalid or missing reset token.");
+      setError("Invalid or missing reset token. Please request a new one.");
       return;
     }
 
@@ -97,34 +97,38 @@ export default function ResetPasswordPage() {
     setError(null);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          password: data.password,
-        }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password/confirm`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include", // ← Required so backend cookies are set
+          body: JSON.stringify({
+            token,
+            new_password: data.password, // ← Backend model expects "new_password"
+          }),
+        }
+      );
+
+      const responseData = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || "Failed to reset password");
+        throw new Error(responseData.detail || "Failed to reset password");
       }
 
       setSuccess(true);
 
-      toast.success("Password Reset Successful", {
-        description: "You can now sign in with your new password.",
+      toast.success("Password Reset Successful!", {
+        description: "You have been logged in with your new password.",
         duration: 6000,
       });
 
-      // Auto-redirect after 5 seconds
-      setTimeout(() => router.push("/auth/signin"), 5000);
+      // Backend already logs the user in → go straight to dashboard
+      setTimeout(() => router.push("/dashboard"), 2000);
     } catch (err: any) {
       const message = err.message || "Something went wrong. Please try again.";
       setError(message);
-
-      toast.error("Reset Failed", { description: message, duration: 5000 });
+      toast.error("Reset Failed", { description: message });
     } finally {
       setIsLoading(false);
     }
@@ -141,10 +145,10 @@ export default function ResetPasswordPage() {
           </CardHeader>
           <CardContent className="text-center space-y-6">
             <p className="text-muted-foreground text-lg">
-              Your password has been successfully reset.
+              You are now logged in with your new password.
             </p>
             <Button asChild className="neon-glow w-full" variant="outline">
-              <Link href="/auth/signin">Back to Sign In</Link>
+              <Link href="/dashboard">Go to Dashboard</Link>
             </Button>
           </CardContent>
         </Card>
@@ -182,6 +186,16 @@ export default function ResetPasswordPage() {
               </Alert>
             )}
 
+            {!token && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-5 w-5" />
+                <AlertTitle>Invalid Link</AlertTitle>
+                <AlertDescription>
+                  This password reset link is invalid or has expired.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               {/* Password */}
               <div className="space-y-2">
@@ -192,7 +206,7 @@ export default function ResetPasswordPage() {
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••••••"
                     {...register("password")}
-                    disabled={isLoading}
+                    disabled={isLoading || !token}
                     className="neon-glow pr-10"
                   />
                   <Button
@@ -207,7 +221,6 @@ export default function ResetPasswordPage() {
                   </Button>
                 </div>
 
-                {/* Password Strength */}
                 {passwordValue && (
                   <div className="space-y-1 pt-1">
                     <div className="flex gap-1">
@@ -240,7 +253,7 @@ export default function ResetPasswordPage() {
                     type={showConfirmPassword ? "text" : "password"}
                     placeholder="••••••••••••"
                     {...register("confirmPassword")}
-                    disabled={isLoading}
+                    disabled={isLoading || !token}
                     className="neon-glow pr-10"
                   />
                   <Button
@@ -259,14 +272,18 @@ export default function ResetPasswordPage() {
                 )}
               </div>
 
-              <Button type="submit" className="w-full h-12 neon-glow text-lg" disabled={isLoading}>
+              <Button
+                type="submit"
+                className="w-full h-12 neon-glow text-lg"
+                disabled={isLoading || !token}
+              >
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-3 h-5 w-5 animate-spin" />
                     Resetting Password...
                   </>
                 ) : (
-                  "Reset Password"
+                  "Reset Password & Sign In"
                 )}
               </Button>
             </form>
