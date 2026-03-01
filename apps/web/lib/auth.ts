@@ -1,6 +1,10 @@
 /**
  * NextAuth v5 (Auth.js) Configuration for CursorCode AI
- * OAuth Only: Google & GitHub
+ * 
+ * HYBRID AUTH SETUP:
+ * - OAuth (Google & GitHub) → Fully handled by NextAuth
+ * - Email/Password + 2FA + Reset → Handled by your FastAPI backend (sets httpOnly cookies)
+ * - Dashboard/Admin pages use `await auth()` for consistent session across all login methods
  */
 
 import NextAuth from "next-auth";
@@ -40,40 +44,41 @@ export const authOptions: NextAuthConfig = {
 
   callbacks: {
     async jwt({ token, user }: { token: JWT; user?: User }) {
+      // OAuth providers populate the user object on first sign-in
       if (user) {
         token.id = user.id ?? "";
         token.email = user.email ?? "";
-        token.roles = user.roles ?? [];
-        token.org_id = user.org_id ?? "";
-        token.plan = user.plan ?? "starter";
-        token.credits = user.credits ?? 0;
-        token.totp_enabled = !!user.totp_enabled;
+        token.roles = (user as any).roles ?? [];
+        token.org_id = (user as any).org_id ?? "";
+        token.plan = (user as any).plan ?? "starter";
+        token.credits = (user as any).credits ?? 0;
+        token.totp_enabled = !!(user as any).totp_enabled;
       }
       return token;
     },
 
     async session({ session, token }: { session: Session; token: JWT }) {
       if (session.user) {
-        session.user.id = token.id ?? "";
-        session.user.email = token.email ?? "";
-        session.user.roles = token.roles ?? [];
-        session.user.org_id = token.org_id ?? "";
-        session.user.plan = token.plan ?? "starter";
-        session.user.credits = token.credits ?? 0;
-        session.user.totp_enabled = token.totp_enabled ?? false;
+        session.user.id = token.id as string;
+        session.user.email = token.email as string;
+        session.user.roles = token.roles as string[];
+        session.user.org_id = token.org_id as string;
+        session.user.plan = token.plan as string;
+        session.user.credits = token.credits as number;
+        session.user.totp_enabled = token.totp_enabled as boolean;
       }
       return session;
     },
   },
 
   pages: {
-    signIn: "/auth/signin", // optional custom page
+    signIn: "/auth/signin",
     error: "/auth/error",
   },
 
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
   cookies: {
@@ -90,6 +95,7 @@ export const authOptions: NextAuthConfig = {
 
   secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
+  debug: process.env.NODE_ENV === "development",
 };
 
 const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
