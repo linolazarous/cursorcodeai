@@ -1,8 +1,7 @@
 // apps/web/app/admin/page.tsx
 import { redirect } from "next/navigation";
-import { auth } from "../../lib/auth";  // Fixed import - using alias
+import { auth } from "../../lib/auth";
 
-// All UI components from the shared @cursorcode/ui package
 import {
   Card,
   CardContent,
@@ -26,9 +25,9 @@ import {
   TableRow,
 } from "@cursorcode/ui";
 
-import { Users, DollarSign, CreditCard, Zap, AlertCircle } from "lucide-react";
+import { Users, DollarSign, CreditCard, Zap, AlertCircle, Loader2 } from "lucide-react";
 
-// Client-only chart component (Recharts cannot run on the server)
+// Client-only chart component
 function RevenueChart() {
   "use client";
 
@@ -59,7 +58,7 @@ function RevenueChart() {
         <YAxis tick={{ fill: "#94A3B8" }} />
         <Tooltip
           contentStyle={{ backgroundColor: "#111827", border: "none", borderRadius: "12px" }}
-          formatter={(value: number) => [`$${value.toLocaleString()}`, "Revenue"]}
+          formatter={(value: number) => [`\[ {value.toLocaleString()}`, "Revenue"]}
         />
         <Bar dataKey="revenue" fill="#1E88E5" radius={[6, 6, 0, 0]} />
       </BarChart>
@@ -67,7 +66,10 @@ function RevenueChart() {
   );
 }
 
-// Mock data (replace with real API calls later)
+// TODO: Replace these with real API calls to your backend /admin/* endpoints
+// Example:
+// const statsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/stats`, { credentials: "include" });
+
 const stats = {
   totalUsers: 1248,
   activeSubscriptions: 342,
@@ -122,7 +124,7 @@ export default async function AdminDashboard() {
           {[
             { label: "Total Users", value: stats.totalUsers.toLocaleString(), icon: Users, change: "+12% this month" },
             { label: "Active Subscriptions", value: stats.activeSubscriptions.toLocaleString(), icon: CreditCard, change: "78% retention" },
-            { label: "Monthly Revenue", value: `$${stats.monthlyRevenue.toLocaleString()}`, icon: DollarSign, change: "+18.2% this month" },
+            { label: "Monthly Revenue", value: ` \]{stats.monthlyRevenue.toLocaleString()}`, icon: DollarSign, change: "+18.2% this month" },
             { label: "Total Projects", value: stats.totalProjects.toLocaleString(), icon: Zap, change: `${stats.failedBuilds} failed builds` },
           ].map((stat, i) => (
             <Card key={i} className="cyber-card neon-glow border-brand-blue/30">
@@ -291,5 +293,3 @@ export default async function AdminDashboard() {
     </div>
   );
 }
-
-
