@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Fingerprint } from "lucide-react";
+import { Loader2, Fingerprint, AlertCircle } from "lucide-react";
 import { startAuthentication } from "@simplewebauthn/browser";
 
 import {
@@ -15,6 +15,8 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Input,
+  Label,
   toast,
 } from "@cursorcode/ui";
 
@@ -25,6 +27,13 @@ export default function SignInPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
+
+  // Email/password login state
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [show2fa, setShow2fa] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleBiometricSignIn = async () => {
     setBiometricLoading(true);
@@ -77,6 +86,51 @@ export default function SignInPage() {
     signIn(provider, { callbackUrl });
   };
 
+  // Email + Password + optional 2FA login
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("username", email);
+      formData.append("password", password);
+
+      if (show2fa && totpCode) {
+        formData.append("totp_code", totpCode);
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const data = await response.json();
+
+      // 428 = 2FA required (from backend)
+      if (response.status === 428) {
+        setShow2fa(true);
+        toast.info("Two-factor authentication required");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Invalid credentials");
+      }
+
+      toast.success("Logged in successfully");
+      router.push(callbackUrl);
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
+      toast.error(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen storyboard-grid bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -98,6 +152,7 @@ export default function SignInPage() {
           </CardHeader>
 
           <CardContent className="space-y-6">
+            {/* Biometric (kept from original) */}
             <Button
               onClick={handleBiometricSignIn}
               disabled={biometricLoading}
@@ -121,10 +176,104 @@ export default function SignInPage() {
                 <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-4 text-muted-foreground">or</span>
+              </div>
+            </div>
+
+            {/* === NEW: Email + Password + 2FA form (matches backend) === */}
+            <form onSubmit={handleEmailLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+
+              {show2fa && (
+                <div className="space-y-2">
+                  <Label htmlFor="totp">2FA Code</Label>
+                  <Input
+                    id="totp"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    pattern="\d{6}"
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                    required
+                    disabled={isLoading}
+                    placeholder="123456"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the 6-digit code from your authenticator app
+                  </p>
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-center text-red-500 text-sm">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  {error}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full h-12 neon-glow"
+                disabled={isLoading || (show2fa && totpCode.length !== 6)}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Signing in...
+                  </>
+                ) : show2fa ? (
+                  "Verify 2FA Code"
+                ) : (
+                  "Sign in with Email"
+                )}
+              </Button>
+            </form>
+
+            {/* Forgot password (only shown before 2FA step) */}
+            {!show2fa && (
+              <div className="text-right">
+                <Link
+                  href="/auth/reset-password"
+                  className="text-sm text-brand-blue hover:underline font-medium"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+            )}
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-card px-4 text-muted-foreground">or continue with</span>
               </div>
             </div>
 
+            {/* OAuth (kept from original) */}
             <div className="grid gap-4">
               <Button
                 variant="outline"
